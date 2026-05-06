@@ -336,6 +336,16 @@
               ]
             },
             {
+              "id": "AZ",
+              "name": "Arizona (亚利桑那州)",
+              "cities": [
+                {
+                  "id": "Phoenix",
+                  "name": "Phoenix (凤凰城)"
+                }
+              ]
+            },
+            {
               "id": "TX",
               "name": "Texas (得克萨斯州)",
               "cities": [
