@@ -1,1 +1,25 @@
-{ "region_name": "Laos (Vientiane)", "google_module": { "base_lat": 17.9757, "base_lon": 102.6331, "lang_params": "hl=en-LA&gl=LA", "valid_url_suffix": "la" }, "trust_module": { "white_urls": [ "https://kpl.gov.la/", "https://www.vientianetimes.org.la/", "https://www.pasaxon.org.la/", "https://www.mof.gov.la/", "https://www.bol.gov.la/", "https://www.mpt.gov.la/", "https://www.laotel.com/", "https://www.unitel.com.la/", "https://www.tplus.la/", "https://www.foodpanda.la/" ], "static_urls": [ "https://kpl.gov.la/", "https://www.vientianetimes.org.la/", "https://www.bol.gov.la/", "https://www.mof.gov.la/", "https://www.laotel.com/" ] } }
+{
+  "region_name": "Laos (Vientiane)",
+  "google_module": {
+    "base_lat": 17.9757,
+    "base_lon": 102.6331,
+    "lang_params": "hl=en-LA&gl=LA",
+    "valid_url_suffix": "la"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.vientianetimes.org.la/",
+      "https://www.mof.gov.la/",
+      "https://www.bol.gov.la/",
+      "https://kpl.gov.la/",
+      "https://www.laotel.com/"
+    ],
+    "static_urls": [
+      "https://kpl.gov.la/",
+      "https://www.vientianetimes.org.la/",
+      "https://www.bol.gov.la/",
+      "https://www.mof.gov.la/",
+      "https://www.laotel.com/"
+    ]
+  }
+}

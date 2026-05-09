@@ -1,1 +1,35 @@
-{ "region_name": "Thailand (Bangkok)", "google_module": { "base_lat": 13.7563, "base_lon": 100.5018, "lang_params": "hl=th-TH&gl=TH", "valid_url_suffix": "co.th" }, "trust_module": { "white_urls": [ "https://www.bangkokpost.com/", "https://www.nationthailand.com/", "https://www.thairath.co.th/", "https://www.khaosod.co.th/", "https://www.matichon.co.th/", "https://www.thaigov.go.th/", "https://www.bot.or.th/", "https://www.set.or.th/", "https://www.lazada.co.th/", "https://shopee.co.th/", "https://www.true.th/", "https://www.dtac.co.th/", "https://www.ais.th/" ], "static_urls": [ "https://www.thaigov.go.th/", "https://www.bot.or.th/", "https://www.set.or.th/", "https://www.bangkokpost.com/", "https://www.thairath.co.th/" ] } }
+{
+  "region_name": "Thailand (Bangkok)",
+  "google_module": {
+    "base_lat": 13.7563,
+    "base_lon": 100.5018,
+    "lang_params": "hl=th-TH&gl=TH",
+    "valid_url_suffix": "co.th"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.set.or.th/",
+      "https://www.bangkokpost.com/thailand/general/3252024/study-backs-phuket-seaplane-project",
+      "https://www.bangkokpost.com/",
+      "https://www.bangkokpost.com/property/3252154/sansiri-upbeat-on-lowrise",
+      "https://www.bangkokpost.com/business/general/3252214/understanding-emergency-debt-decrees",
+      "https://www.thaigov.go.th/",
+      "https://www.bangkokpost.com/business/general/3252174/gsb-loan-scheme-to-cover-school-expenses",
+      "https://www.bangkokpost.com/business/general/3252189/ais-true-report-healthy-profits-based-on-5g-growth",
+      "https://www.thairath.co.th/",
+      "https://www.bot.or.th/",
+      "https://www.bangkokpost.com/business/general/3252159/thailand-targets-high-ecommerce-platform-fees",
+      "https://www.bangkokpost.com/video/thailand/3252288/chef-kas-unique-sixlayer-crispy-pork-in-bangkok-slum-khlong-toei-draws-queues-of-up-to-three-hours",
+      "https://www.bangkokpost.com/thailand/politics/3252269/peoples-party-plays-game-of-shadows",
+      "https://www.bangkokpost.com/thailand/politics/3252034/opposition-decries-charter-reform-delay",
+      "https://www.bangkokpost.com/business/general/3252049/b130bn-trade-target-set-for-thaifex-2026-food-exhibition"
+    ],
+    "static_urls": [
+      "https://www.thaigov.go.th/",
+      "https://www.bot.or.th/",
+      "https://www.set.or.th/",
+      "https://www.bangkokpost.com/",
+      "https://www.thairath.co.th/"
+    ]
+  }
+}

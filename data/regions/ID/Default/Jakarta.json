@@ -1,1 +1,40 @@
-{ "region_name": "Indonesia (Jakarta)", "google_module": { "base_lat": -6.2088, "base_lon": 106.8456, "lang_params": "hl=id-ID&gl=ID", "valid_url_suffix": "co.id" }, "trust_module": { "white_urls": [ "https://www.kompas.com/", "https://www.detik.com/", "https://www.tempo.co/", "https://www.cnnindonesia.com/", "https://www.antaranews.com/", "https://www.setneg.go.id/", "https://www.bi.go.id/", "https://www.kominfo.go.id/", "https://www.ojk.go.id/", "https://www.telkomsel.com/", "https://www.xl.co.id/", "https://www.indosatooredoo.com/", "https://www.tokopedia.com/", "https://shopee.co.id/", "https://www.lazada.co.id/" ], "static_urls": [ "https://www.setneg.go.id/", "https://www.bi.go.id/", "https://www.kominfo.go.id/", "https://www.antaranews.com/", "https://www.kompas.com/" ] } }
+{
+  "region_name": "Indonesia (Jakarta)",
+  "google_module": {
+    "base_lat": -6.2088,
+    "base_lon": 106.8456,
+    "lang_params": "hl=id-ID&gl=ID",
+    "valid_url_suffix": "co.id"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.kominfo.go.id/",
+      "https://www.antaranews.com/berita/5560931/penyanyi-shakira-bocorkan-lagu-resmi-piala-dunia-2026",
+      "https://www.antaranews.com/",
+      "https://www.antaranews.com/berita/5560945/asean-percepat-mekanisme-berbagi-energi-interkoneksi-listrik",
+      "https://www.antaranews.com/berita/5560989/prabowo-jadi-presiden-kedua-yang-kunjungi-miangas",
+      "https://www.antaranews.com/berita/5561043/presiden-pastikan-seluruh-sekolah-akan-direnovasi-2-3-tahun-ke-depan",
+      "https://www.antaranews.com/berita/5560985/trump-ancam-tingkatkan-aksi-militer-jika-negosiasi-dengan-iran-gagal",
+      "https://www.antaranews.com/berita/5561027/penumpang-as-kapal-terkait-hantavirus-akan-dikarantina-di-nebraska",
+      "https://www.antaranews.com/berita/5561015/hutan-papua-pegunungan-penyangga-ekosistem-bumi",
+      "https://www.setneg.go.id/",
+      "https://otomotif.antaranews.com/berita/5561004/byd-linghui-e9-dengan-flash-charging-resmi-dibanderol-mulai-rp385-juta",
+      "https://www.antaranews.com/berita/5560973/ekonom-paparkan-strategi-program-mbg-dan-ketahanan-fiskal-beriringan",
+      "https://www.antaranews.com/berita/5560976/polda-metro-jaya-gelar-operasi-penindakan-judi-online-internasional",
+      "https://www.antaranews.com/berita/5560939/lisa-blackpink-akan-tampil-di-pembukaan-piala-dunia-2026",
+      "https://www.antaranews.com/berita/5560953/bph-migas-dorong-cng-jadi-alternatif-energi-rumah-tangga",
+      "https://www.bi.go.id/",
+      "https://www.kompas.com/",
+      "https://www.antaranews.com/berita/5560972/polisi-tangkap-10-remaja-yang-berniat-tawuran-di-jaktim",
+      "https://www.antaranews.com/berita/5561035/prabowo-targetkan-1386-desa-nelayan-diresmikan-desember-2026",
+      "https://www.antaranews.com/berita/5561037/apple-mungkin-pasok-chip-iphone-dan-mac-dari-kompetitor-lamanya-intel"
+    ],
+    "static_urls": [
+      "https://www.setneg.go.id/",
+      "https://www.bi.go.id/",
+      "https://www.kominfo.go.id/",
+      "https://www.antaranews.com/",
+      "https://www.kompas.com/"
+    ]
+  }
+}

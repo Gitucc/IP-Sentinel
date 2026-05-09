@@ -1,1 +1,25 @@
-{ "region_name": "Nepal (Kathmandu)", "google_module": { "base_lat": 27.7172, "base_lon": 85.3240, "lang_params": "hl=en-NP&gl=NP", "valid_url_suffix": "com.np" }, "trust_module": { "white_urls": [ "https://kathmandupost.com/", "https://myrepublica.nagariknetwork.com/", "https://thehimalayantimes.com/", "https://www.onlinekhabar.com/", "https://ekantipur.com/", "https://www.ratopati.com/", "https://nepal.gov.np/", "https://mof.gov.np/", "https://www.nrb.org.np/", "https://nta.gov.np/", "https://www.ntc.net.np/", "https://www.ncell.com.np/", "https://www.daraz.com.np/" ], "static_urls": [ "https://nepal.gov.np/", "https://www.nrb.org.np/", "https://kathmandupost.com/", "https://thehimalayantimes.com/", "https://www.onlinekhabar.com/" ] } }
+{
+  "region_name": "Nepal (Kathmandu)",
+  "google_module": {
+    "base_lat": 27.7172,
+    "base_lon": 85.324,
+    "lang_params": "hl=en-NP&gl=NP",
+    "valid_url_suffix": "com.np"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://thehimalayantimes.com/",
+      "https://kathmandupost.com/",
+      "https://nepal.gov.np/",
+      "https://www.onlinekhabar.com/",
+      "https://www.nrb.org.np/"
+    ],
+    "static_urls": [
+      "https://nepal.gov.np/",
+      "https://www.nrb.org.np/",
+      "https://kathmandupost.com/",
+      "https://thehimalayantimes.com/",
+      "https://www.onlinekhabar.com/"
+    ]
+  }
+}

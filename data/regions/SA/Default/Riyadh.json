@@ -1,1 +1,25 @@
-{ "region_name": "Saudi Arabia (Riyadh)", "google_module": { "base_lat": 24.7136, "base_lon": 46.6753, "lang_params": "hl=ar-SA&gl=SA", "valid_url_suffix": "com.sa" }, "trust_module": { "white_urls": [ "https://www.arabnews.com/", "https://www.saudigazette.com.sa/", "https://www.spa.gov.sa/", "https://www.sabq.org/", "https://www.alriyadh.com/", "https://www.my.gov.sa/", "https://www.sama.gov.sa/", "https://www.citc.gov.sa/", "https://www.stc.com.sa/", "https://www.mobily.com.sa/", "https://www.zain.com.sa/", "https://www.noon.com/saudi-en/", "https://www.amazon.sa/", "https://www.jarir.com/", "https://www.hungerstation.com/" ], "static_urls": [ "https://www.my.gov.sa/", "https://www.sama.gov.sa/", "https://www.spa.gov.sa/", "https://www.arabnews.com/", "https://www.saudigazette.com.sa/" ] } }
+{
+  "region_name": "Saudi Arabia (Riyadh)",
+  "google_module": {
+    "base_lat": 24.7136,
+    "base_lon": 46.6753,
+    "lang_params": "hl=ar-SA&gl=SA",
+    "valid_url_suffix": "com.sa"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.spa.gov.sa/",
+      "https://www.saudigazette.com.sa/",
+      "https://www.arabnews.com/",
+      "https://www.my.gov.sa/",
+      "https://www.sama.gov.sa/"
+    ],
+    "static_urls": [
+      "https://www.my.gov.sa/",
+      "https://www.sama.gov.sa/",
+      "https://www.spa.gov.sa/",
+      "https://www.arabnews.com/",
+      "https://www.saudigazette.com.sa/"
+    ]
+  }
+}

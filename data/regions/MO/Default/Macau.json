@@ -7,7 +7,25 @@
     "valid_url_suffix": "com.mo"
   },
   "trust_module": {
-    "white_urls": [],
+    "white_urls": [
+      "https://www.bocmacau.com/",
+      "https://macaudailytimes.com.mo/two-dual-plate-vehicles-caught-smuggling-38-live-ornamental-fish.html",
+      "https://www.macau.gov.mo/",
+      "https://macaudailytimes.com.mo/travel-apps-fail-to-provide-fast-safe-routes-for-pedestrians.html",
+      "https://www.macaudailytimes.com.mo/",
+      "https://macaudailytimes.com.mo/hengqin-ports-smart-immigration-clearance-lane-to-cut-crossing-time-by-90.html",
+      "https://macaudailytimes.com.mo/ic-says-growing-number-of-youngsters-want-to-work-as-intangible-cultural-heritage-inheritors.html",
+      "https://macaudailytimes.com.mo/macau-looks-to-expand-recycled-water-use-in-cotai.html",
+      "https://www.umac.mo/",
+      "https://macaudailytimes.com.mo/hantavirus-risk-in-macau-low-but-rat-control-urged.html",
+      "https://www.dsat.gov.mo/",
+      "https://macaudailytimes.com.mo/the-rapid-embrace-of-ai-in-china-and-gba-may-shape-how-it-is-used-globally.html",
+      "https://www.ctm.net/",
+      "https://macaudailytimes.com.mo/govt-rolls-out-two-month-diesel-subsidy-scheme-with-mop80-million-budget.html",
+      "https://macaudailytimes.com.mo/macau-showcases-jacones-polyphony-at-this-years-venice-biennale.html",
+      "https://macaudailytimes.com.mo/a-bold-case-for-chinese-wine-with-cantonese-craft.html",
+      "https://www.gov.mo/"
+    ],
     "static_urls": [
       "https://www.gov.mo/",
       "https://www.macau.gov.mo/",

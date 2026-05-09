@@ -1,1 +1,35 @@
-{ "region_name": "Bangladesh (Dhaka)", "google_module": { "base_lat": 23.8103, "base_lon": 90.4125, "lang_params": "hl=en-BD&gl=BD", "valid_url_suffix": "com.bd" }, "trust_module": { "white_urls": [ "https://www.thedailystar.net/", "https://www.bdnews24.com/", "https://www.prothomalo.com/", "https://www.dhakatribune.com/", "https://www.banglanews24.com/", "https://www.bssnews.net/", "https://bangladesh.gov.bd/", "https://www.bb.org.bd/", "https://mof.gov.bd/", "https://btrc.gov.bd/", "https://www.grameenphone.com/", "https://www.banglalink.net/", "https://www.robi.com.bd/", "https://www.daraz.com.bd/" ], "static_urls": [ "https://bangladesh.gov.bd/", "https://www.bb.org.bd/", "https://www.thedailystar.net/", "https://www.prothomalo.com/", "https://www.bdnews24.com/" ] } }
+{
+  "region_name": "Bangladesh (Dhaka)",
+  "google_module": {
+    "base_lat": 23.8103,
+    "base_lon": 90.4125,
+    "lang_params": "hl=en-BD&gl=BD",
+    "valid_url_suffix": "com.bd"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.thedailystar.net/rohingya-influx/news/rohingya-genocide-case-proceed-3076971",
+      "https://www.bb.org.bd/",
+      "https://www.thedailystar.net/news/bangladesh/news/you-cannot-remain-silent-3076231",
+      "https://bangladesh.gov.bd/",
+      "https://www.thedailystar.net/",
+      "https://www.thedailystar.net/news/bangladesh/news/yet-start-mega-projects-consider-putting-them-hold-3076221",
+      "https://www.thedailystar.net/youth/education/campus/news/cu-admin-identifies-2-molesters-3076956",
+      "https://www.thedailystar.net/news/bangladesh/news/noab-hikes-newspaper-price-tk-2-jul-25-3076201",
+      "https://www.prothomalo.com/",
+      "https://www.thedailystar.net/news/bangladesh/news/need-1-week-assess-situation-3076976",
+      "https://www.thedailystar.net/news/bangladesh/politics/news/ecs-dialogue-parties-runs-snag-3075346",
+      "https://www.thedailystar.net/news/bangladesh/news/power-crisis-may-worsen-3075341",
+      "https://www.thedailystar.net/news/bangladesh/crime-justice/news/cu-sexual-assault-fingers-pointed-bcl-men-3076216",
+      "https://www.bdnews24.com/",
+      "https://www.thedailystar.net/news/bangladesh/news/wasfia-first-bangladeshi-conquer-k2-3076981"
+    ],
+    "static_urls": [
+      "https://bangladesh.gov.bd/",
+      "https://www.bb.org.bd/",
+      "https://www.thedailystar.net/",
+      "https://www.prothomalo.com/",
+      "https://www.bdnews24.com/"
+    ]
+  }
+}

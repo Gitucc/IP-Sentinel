@@ -1,1 +1,25 @@
-{ "region_name": "Cambodia (Phnom Penh)", "google_module": { "base_lat": 11.5564, "base_lon": 104.9282, "lang_params": "hl=en-KH&gl=KH", "valid_url_suffix": "com.kh" }, "trust_module": { "white_urls": [ "https://www.khmertimeskh.com/", "https://www.phnompenhpost.com/", "https://www.freshnewsasia.com/", "https://www.cambodiadaily.com/", "https://www.akp.gov.kh/", "https://www.gov.kh/", "https://www.nbc.gov.kh/", "https://www.mptc.gov.kh/", "https://www.lazada.com.kh/", "https://shopee.com.kh/", "https://www.smart.com.kh/", "https://www.metfone.com.kh/", "https://www.cellcard.com.kh/" ], "static_urls": [ "https://www.gov.kh/", "https://www.akp.gov.kh/", "https://www.nbc.gov.kh/", "https://www.khmertimeskh.com/", "https://www.phnompenhpost.com/" ] } }
+{
+  "region_name": "Cambodia (Phnom Penh)",
+  "google_module": {
+    "base_lat": 11.5564,
+    "base_lon": 104.9282,
+    "lang_params": "hl=en-KH&gl=KH",
+    "valid_url_suffix": "com.kh"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.khmertimeskh.com/",
+      "https://www.gov.kh/",
+      "https://www.akp.gov.kh/",
+      "https://www.nbc.gov.kh/",
+      "https://www.phnompenhpost.com/"
+    ],
+    "static_urls": [
+      "https://www.gov.kh/",
+      "https://www.akp.gov.kh/",
+      "https://www.nbc.gov.kh/",
+      "https://www.khmertimeskh.com/",
+      "https://www.phnompenhpost.com/"
+    ]
+  }
+}

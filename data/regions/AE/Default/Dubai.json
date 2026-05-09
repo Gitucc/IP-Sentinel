@@ -1,1 +1,25 @@
-{ "region_name": "UAE (Dubai)", "google_module": { "base_lat": 25.2048, "base_lon": 55.2708, "lang_params": "hl=en-AE&gl=AE", "valid_url_suffix": "ae" }, "trust_module": { "white_urls": [ "https://www.khaleejtimes.com/", "https://gulfnews.com/", "https://www.thenationalnews.com/", "https://www.arabianbusiness.com/", "https://www.emirates247.com/", "https://u.ae/", "https://www.mofa.gov.ae/", "https://www.centralbank.ae/", "https://www.etisalat.ae/", "https://www.du.ae/", "https://www.noon.com/uae-en/", "https://www.amazon.ae/", "https://www.careem.com/", "https://www.talabat.com/uae/" ], "static_urls": [ "https://u.ae/", "https://www.centralbank.ae/", "https://gulfnews.com/", "https://www.khaleejtimes.com/", "https://www.thenationalnews.com/" ] } }
+{
+  "region_name": "UAE (Dubai)",
+  "google_module": {
+    "base_lat": 25.2048,
+    "base_lon": 55.2708,
+    "lang_params": "hl=en-AE&gl=AE",
+    "valid_url_suffix": "ae"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.thenationalnews.com/",
+      "https://u.ae/",
+      "https://www.khaleejtimes.com/",
+      "https://www.centralbank.ae/",
+      "https://gulfnews.com/"
+    ],
+    "static_urls": [
+      "https://u.ae/",
+      "https://www.centralbank.ae/",
+      "https://gulfnews.com/",
+      "https://www.khaleejtimes.com/",
+      "https://www.thenationalnews.com/"
+    ]
+  }
+}

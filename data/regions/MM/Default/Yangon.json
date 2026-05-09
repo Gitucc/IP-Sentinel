@@ -1,1 +1,23 @@
-{ "region_name": "Myanmar (Yangon)", "google_module": { "base_lat": 16.8409, "base_lon": 96.1735, "lang_params": "hl=en-MM&gl=MM", "valid_url_suffix": "com.mm" }, "trust_module": { "white_urls": [ "https://www.mmtimes.com/", "https://www.irrawaddy.com/", "https://www.myanmar-now.org/", "https://elevenmyanmar.com/", "https://www.moi.gov.mm/", "https://www.motc.gov.mm/", "https://www.cbmm.gov.mm/", "https://www.mpt.com.mm/", "https://www.ooredoo.com.mm/", "https://www.telenor.com.mm/", "https://www.shop.com.mm/", "https://www.foodpanda.com.mm/" ], "static_urls": [ "https://www.moi.gov.mm/", "https://www.cbmm.gov.mm/", "https://www.mmtimes.com/", "https://www.irrawaddy.com/" ] } }
+{
+  "region_name": "Myanmar (Yangon)",
+  "google_module": {
+    "base_lat": 16.8409,
+    "base_lon": 96.1735,
+    "lang_params": "hl=en-MM&gl=MM",
+    "valid_url_suffix": "com.mm"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.moi.gov.mm/",
+      "https://www.cbmm.gov.mm/",
+      "https://www.irrawaddy.com/",
+      "https://www.mmtimes.com/"
+    ],
+    "static_urls": [
+      "https://www.moi.gov.mm/",
+      "https://www.cbmm.gov.mm/",
+      "https://www.mmtimes.com/",
+      "https://www.irrawaddy.com/"
+    ]
+  }
+}

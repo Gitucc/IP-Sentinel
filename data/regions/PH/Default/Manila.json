@@ -1,1 +1,21 @@
-{ "region_name": "Philippines (Manila)", "google_module": { "base_lat": 14.5995, "base_lon": 120.9842, "lang_params": "hl=en-PH&gl=PH", "valid_url_suffix": "com.ph" }, "trust_module": { "white_urls": [ "https://www.gmanetwork.com/news/", "https://www.abs-cbn.com/news", "https://www.philstar.com/", "https://newsinfo.inquirer.net/", "https://www.manilatimes.net/", "https://www.rappler.com/" ], "static_urls": [ "https://www.gov.ph/", "https://www.pna.gov.ph/", "https://www.bsp.gov.ph/" ] } }
+{
+  "region_name": "Philippines (Manila)",
+  "google_module": {
+    "base_lat": 14.5995,
+    "base_lon": 120.9842,
+    "lang_params": "hl=en-PH&gl=PH",
+    "valid_url_suffix": "com.ph"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.gov.ph/",
+      "https://www.bsp.gov.ph/",
+      "https://www.pna.gov.ph/"
+    ],
+    "static_urls": [
+      "https://www.gov.ph/",
+      "https://www.pna.gov.ph/",
+      "https://www.bsp.gov.ph/"
+    ]
+  }
+}

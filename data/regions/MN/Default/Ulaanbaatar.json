@@ -1,1 +1,23 @@
-{ "region_name": "Mongolia (Ulaanbaatar)", "google_module": { "base_lat": 47.8864, "base_lon": 106.9057, "lang_params": "hl=mn-MN&gl=MN", "valid_url_suffix": "mn" }, "trust_module": { "white_urls": [ "https://montsame.mn/", "https://news.mn/", "https://ikon.mn/", "https://gogo.mn/", "https://www.mnb.mn/", "https://www.gov.mn/", "https://www.mongolbank.mn/", "https://www.mta.mn/", "https://www.unitel.mn/", "https://www.skytel.mn/", "https://www.mobinet.mn/" ], "static_urls": [ "https://www.gov.mn/", "https://www.mongolbank.mn/", "https://montsame.mn/", "https://news.mn/" ] } }
+{
+  "region_name": "Mongolia (Ulaanbaatar)",
+  "google_module": {
+    "base_lat": 47.8864,
+    "base_lon": 106.9057,
+    "lang_params": "hl=mn-MN&gl=MN",
+    "valid_url_suffix": "mn"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://montsame.mn/",
+      "https://www.gov.mn/",
+      "https://www.mongolbank.mn/",
+      "https://news.mn/"
+    ],
+    "static_urls": [
+      "https://www.gov.mn/",
+      "https://www.mongolbank.mn/",
+      "https://montsame.mn/",
+      "https://news.mn/"
+    ]
+  }
+}
