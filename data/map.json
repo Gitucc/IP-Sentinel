@@ -277,6 +277,23 @@
           ]
         },
         {
+          "id": "MO",
+          "name": "Macau (澳门)",
+          "keyword_file": "kw_MO.txt",
+          "states": [
+            {
+              "id": "Default",
+              "name": "Default State",
+              "cities": [
+                {
+                  "id": "Macau",
+                  "name": "Macau (澳门)"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "id": "VN",
           "name": "Vietnam (越南)",
           "keyword_file": "kw_VN.txt",
