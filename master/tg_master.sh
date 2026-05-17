@@ -36,6 +36,9 @@ get_flag() {
         NZ) flag="🇳🇿" ;; AR) flag="🇦🇷" ;; CL) flag="🇨🇱" ;; MX) flag="🇲🇽" ;; IL) flag="🇮🇱" ;;
         SA) flag="🇸🇦" ;; EG) flag="🇪🇬" ;; NG) flag="🇳🇬" ;; KE) flag="🇰🇪" ;; RO) flag="🇷🇴" ;;
         BG) flag="🇧🇬" ;; CZ) flag="🇨🇿" ;; HU) flag="🇭🇺" ;; GR) flag="🇬🇷" ;; UA) flag="🇺🇦" ;;
+        # === 补齐近期扩军的新增战区旗帜 ===
+        MO) flag="🇲🇴" ;; KH) flag="🇰🇭" ;; MM) flag="🇲🇲" ;; LA) flag="🇱🇦" ;;
+        MN) flag="🇲🇳" ;; NP) flag="🇳🇵" ;; BD) flag="🇧🇩" ;;
     esac
     echo "$flag"
 }
