@@ -82,6 +82,21 @@ else
     SESSION_UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 fi
 
+# -----------------------------------------------------------
+# [v4.1.4 平台身份提取器 (Persona Mapper)]
+# 识别当前指纹的系统平台，杜绝跨平台的底层探针穿帮
+# -----------------------------------------------------------
+UA_PLATFORM="windows"
+if [[ "$SESSION_UA" == *"Android"* ]]; then
+    UA_PLATFORM="android"
+elif [[ "$SESSION_UA" == *"iPhone"* ]] || [[ "$SESSION_UA" == *"iPad"* ]]; then
+    UA_PLATFORM="ios"
+elif [[ "$SESSION_UA" == *"Macintosh"* ]]; then
+    UA_PLATFORM="macos"
+elif [[ "$SESSION_UA" == *"Linux"* ]]; then
+    UA_PLATFORM="linux"
+fi
+
 # [LBS 锚定] 在基准战区内生成固定范围内的微抖动咖啡馆坐标
 SESSION_BASE_LAT=$(get_random_coord $BASE_LAT 270)
 SESSION_BASE_LON=$(get_random_coord $BASE_LON 270)
@@ -91,6 +106,7 @@ TOTAL_ACTIONS=$((5 + RANDOM % 4))
 
 log "$MODULE_NAME" "INFO " "当前出网 IP: $CURRENT_IP"
 log "$MODULE_NAME" "INFO " "设备指纹锁定: ${SESSION_UA:0:45}..."
+log "$MODULE_NAME" "INFO " "平台推断: [$UA_PLATFORM] | 虚拟驻留坐标: $SESSION_BASE_LAT, $SESSION_BASE_LON"
 log "$MODULE_NAME" "INFO " "虚拟驻留坐标: $SESSION_BASE_LAT, $SESSION_BASE_LON"
 
 # -----------------------------------------------------------
@@ -151,19 +167,61 @@ for ((i=1; i<=TOTAL_ACTIONS; i++)); do
     ENCODED_KEY=$(printf '%s' "$RAND_KEY" | jq -sRr @uri 2>/dev/null)
     [ -z "$ENCODED_KEY" ] && ENCODED_KEY="google"
     
-    # [动作轮盘] 随机指派单次行为类型
-    ACTION_TYPE=$((1 + RANDOM % 4))
+    # [v4.1.4] 平台级动作轮盘：基于 UA_PLATFORM 构建专属行为矩阵
+    ACTION_DICE=$((RANDOM % 100))
     TARGET_URL=""
+    ACTION_LOG=""
+
+    if [ "$UA_PLATFORM" == "android" ]; then
+        if [ $ACTION_DICE -lt 25 ]; then
+            TARGET_URL="https://www.google.com/search?q=${ENCODED_KEY}&${LANG_PARAMS}"
+            ACTION_LOG="Search "
+        elif [ $ACTION_DICE -lt 55 ]; then
+            TARGET_URL="https://news.google.com/home?${LANG_PARAMS}"
+            ACTION_LOG="News   "
+        elif [ $ACTION_DICE -lt 85 ]; then
+            TARGET_URL="https://www.google.com/maps/search/$${ENCODED_KEY}/@${ACTION_LAT},${ACTION_LON},17z?${LANG_PARAMS}"
+            ACTION_LOG="Maps   "
+        else
+            # Android 专属底层网络探针
+            TARGET_URL="https://connectivitycheck.gstatic.com/generate_204"
+            ACTION_LOG="NetTest"
+        fi
+    elif [ "$UA_PLATFORM" == "ios" ] || [ "$UA_PLATFORM" == "macos" ]; then
+        if [ $ACTION_DICE -lt 30 ]; then
+            TARGET_URL="https://www.google.com/search?q=${ENCODED_KEY}&${LANG_PARAMS}"
+            ACTION_LOG="Search "
+        elif [ $ACTION_DICE -lt 65 ]; then
+            TARGET_URL="https://news.google.com/home?${LANG_PARAMS}"
+            ACTION_LOG="News   "
+        elif [ $ACTION_DICE -lt 90 ]; then
+            TARGET_URL="https://www.google.com/maps/search/$${ENCODED_KEY}/@${ACTION_LAT},${ACTION_LON},17z?${LANG_PARAMS}"
+            ACTION_LOG="Maps   "
+        else
+            # Apple 专属的 Captive Portal 探针，杜绝跨平台穿帮
+            TARGET_URL="https://captive.apple.com/hotspot-detect.html"
+            ACTION_LOG="NetTest"
+        fi
+    else
+        # Windows / Linux 专属行为矩阵 (无移动端探针，加入隐私/支持页漫游)
+        if [ $ACTION_DICE -lt 20 ]; then
+            TARGET_URL="https://www.google.com/search?q=${ENCODED_KEY}&${LANG_PARAMS}"
+            ACTION_LOG="Search "
+        elif [ $ACTION_DICE -lt 60 ]; then
+            TARGET_URL="https://news.google.com/home?${LANG_PARAMS}"
+            ACTION_LOG="News   "
+        elif [ $ACTION_DICE -lt 80 ]; then
+            # 引入桌面端低危生态池漫游
+            LOW_RISK_ECO=("https://about.google/" "https://safety.google/" "https://support.google.com/?hl=${LANG_ACCEPT%%,*}")
+            TARGET_URL="${LOW_RISK_ECO[$((RANDOM % ${#LOW_RISK_ECO[@]}))]}"
+            ACTION_LOG="EcoRoam"
+        else
+            TARGET_URL="https://www.google.com/maps/search/$${ENCODED_KEY}/@${ACTION_LAT},${ACTION_LON},17z?${LANG_PARAMS}"
+            ACTION_LOG="Maps   "
+        fi
+    fi
     
-    # [v4.1.3 修复] 剥离冗余的 curl 载荷，将目标 URL 统一抽离
-    case $ACTION_TYPE in
-        1) TARGET_URL="https://www.google.com/search?q=${ENCODED_KEY}&${LANG_PARAMS}" ;;
-        2) TARGET_URL="https://news.google.com/home?${LANG_PARAMS}" ;;
-        3) TARGET_URL="https://www.google.com/maps/search/$${ENCODED_KEY}/@${ACTION_LAT},${ACTION_LON},17z?${LANG_PARAMS}" ;;
-        4) TARGET_URL="https://connectivitycheck.gstatic.com/generate_204" ;;
-    esac
-    
-    # [v4.1.3 修复] 统一执行 curl，并精准捕获底层网络错误码 (防 CODE 空值塌陷)
+    # [v4.1.3 修复] 统一执行 curl，并精准捕获底层网络错误码
     CODE=$(curl $CURL_BIND_OPT $DYNAMIC_IP_PREF -m 15 -s -L -o /dev/null -w "%{http_code}" \
          -b "$COOKIE_FILE" -c "$COOKIE_FILE" -A "$SESSION_UA" "$TARGET_URL")
     CURL_EXIT=$?
