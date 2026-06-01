@@ -484,27 +484,30 @@ import socket
 # ----------------------------------------------------------
 # [核心架构] 多线程非阻塞 Socket 模型 (抵抗 Slowloris 及阻塞攻击)
 # ----------------------------------------------------------
-class ThreadedServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+class DualStackServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
+    def server_bind(self):
+        # 强行解除 IPv6 独占锁，实现一个 Socket 同时接管 IPv4 和 IPv6 (全域防漏接)
+        if self.address_family == socket.AF_INET6:
+            try:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            except Exception:
+                pass
+        super().server_bind()
 
-# [v4.2.0 战术重构] 双轨通讯分离架构探底
-# Python 引擎彻底脱离养护 IP 的干扰，绝对服从 COMM_IP (专线通讯) 的协议栈维度
-bind_addr = "0.0.0.0"
-address_family = socket.AF_INET
+# [v4.2.2 终极架构] 彻底抛弃配置文件的 IP 束缚，强行探测系统底层的双栈能力
+bind_addr = "::"
+address_family = socket.AF_INET6
+try:
+    # 探针：如果机器是纯 IPv4 (连 v6 模块都没有)，强绑 :: 会崩溃，自动降维
+    s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    s.close()
+except OSError:
+    bind_addr = "0.0.0.0"
+    address_family = socket.AF_INET
 
-config_path = '/opt/ip_sentinel/config.conf'
-if os.path.exists(config_path):
-    with open(config_path, 'r', errors='ignore') as f:
-        for line in f:
-            if line.startswith('COMM_IP='):
-                comm_ip = line.split('=', 1)[1].strip('"\'')
-                if ':' in comm_ip:
-                    bind_addr = "::"
-                    address_family = socket.AF_INET6
-                break
-
-ThreadedServer.address_family = address_family
-httpd = ThreadedServer((bind_addr, PORT), AgentHandler)
+DualStackServer.address_family = address_family
+httpd = DualStackServer((bind_addr, PORT), AgentHandler)
 
 # ----------------------------------------------------------
 # [加密通信] 强制全网挂载 TLS 加密隧道上下文

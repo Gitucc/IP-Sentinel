@@ -488,24 +488,27 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         SAFE_PUBLIC_IP="$PUBLIC_IP"
     fi
 
-    COMM_IP="$PUBLIC_IP"
-    if [[ "$PUBLIC_IP" == *":"* ]]; then
-        echo -e "\n\033[36m[4.6/7] 正在构建双轨通讯分离架构 (Control Plane Separation)...\033[0m"
-        echo -e " \033[33m⚠️ 检测到养护锚点为 IPv6，正在嗅探本机 IPv4 以构建防 MTU 黑洞通讯专线...\033[0m"
-        
-        if [[ -n "$DETECT_V4" ]]; then
-            COMM_IP="$DETECT_V4"
-            echo -e " \033[32m✅ 成功建立双轨架构: 养护数据流走 IPv6 ($PUBLIC_IP)，中枢控制流走 IPv4 ($COMM_IP)\033[0m"
-        else
-            echo -e " \033[33m⚠️ 本机无公网 IPv4 或检测到 WARP/NAT 伪装 IP，为防阻断，双轨已安全降级为纯 IPv6 单轨模式。\033[0m"
-        fi
+    # ==========================================================
+    # [v4.2.2 终极架构] 智能主副容灾弹药装填 (Multi-IP Fallback)
+    # 不再纠结内网阻断，直接将所有存活 IP 以逗号拼接上报司令部，由司令部执行降级回退打击
+    # ==========================================================
+    echo -e "\n\033[36m[4.6/7] 正在装填通讯容灾防线 (Multi-IP Fallback)...\033[0m"
+    COMM_IP="$SAFE_PUBLIC_IP"
+    FALLBACK_IP=""
+
+    if [ "${IP_PREF}" == "6" ] && [ -n "$DETECT_V4" ]; then
+        FALLBACK_IP="$DETECT_V4"
+    elif [ "${IP_PREF}" == "4" ] && [ -n "$DETECT_V6" ]; then
+        [[ "$DETECT_V6" != *"["* ]] && FALLBACK_IP="[${DETECT_V6}]" || FALLBACK_IP="$DETECT_V6"
     fi
 
-    if [[ "$COMM_IP" == *":"* ]] && [[ "$COMM_IP" != *"["* ]]; then
-        SAFE_COMM_IP="[${COMM_IP}]"
+    if [ -n "$FALLBACK_IP" ]; then
+        COMM_IP="${COMM_IP},${FALLBACK_IP}"
+        echo -e " \033[32m✅ 成功建立双向容灾通讯专线: 主通道 $SAFE_PUBLIC_IP，备用通道 $FALLBACK_IP\033[0m"
     else
-        SAFE_COMM_IP="$COMM_IP"
+        echo -e " \033[33m⚠️ 暂无可用备用公网 IP，建立单轨通讯模式: $SAFE_PUBLIC_IP\033[0m"
     fi
+    SAFE_COMM_IP="$COMM_IP"
 
     echo -n "🕵️ 正在进行出站链路试射 (NAT环境与双栈嗅探)..."
     RAW_TEST_IP=$(echo "$SAFE_PUBLIC_IP" | tr -d '[]')
