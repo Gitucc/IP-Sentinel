@@ -1016,11 +1016,15 @@ if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
         
     else
         echo -e "\n📡 正在向指挥部发送注册暗号..."
+        
+        # [v4.2.2 防截断护盾] 将容灾 IP 中的下划线进行转义，防止触发 TG Markdown V1 的斜体解析崩溃
+        SAFE_COMM_IP_ESC=$(echo "$SAFE_COMM_IP" | sed 's/_/\\_/g')
+        
         TEXT_MSG="✨ *IP-Sentinel 部署成功！*
 📍 区域：${REGION_NAME}
-🌐 养护 IP：${SAFE_PUBLIC_IP}
-📡 容灾 IP：${SAFE_COMM_IP}
-🔌 端口：${AGENT_PORT}
+🌐 养护 IP：\`${SAFE_PUBLIC_IP}\`
+📡 容灾 IP：\`${SAFE_COMM_IP_ESC}\`
+🔌 端口：\`${AGENT_PORT}\`
 
 🔑 *请点击下方指令复制并回复给机器人：*
 \`${REG_MSG}\`"
