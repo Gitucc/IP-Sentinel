@@ -686,7 +686,9 @@ while true; do
                     AGENT_IP=$(echo "$AGENT_INFO" | cut -d'|' -f1)
                     AGENT_PORT=$(echo "$AGENT_INFO" | cut -d'|' -f2)
 
-                    if [ -n "$MSG_ID" ]; then
+                    # [修正点] 必须保留这层外壳判断
+                    if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
+                        if [ -n "$MSG_ID" ]; then
                             edit_msg "$CHAT_ID" "$MSG_ID" "⏳ 正在向 \`$TARGET_NODE\` 发送 OTA 触发报文..."
                         else
                             send_msg "$CHAT_ID" "⏳ 正在向 \`$TARGET_NODE\` 发送 OTA 触发报文..."
@@ -721,7 +723,9 @@ while true; do
                     AGENT_IP=$(echo "$AGENT_INFO" | cut -d'|' -f1)
                     AGENT_PORT=$(echo "$AGENT_INFO" | cut -d'|' -f2)
 
-                    if [ -n "$MSG_ID" ]; then
+                    # [修正点] 必须保留这层外壳判断
+                    if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
+                        if [ -n "$MSG_ID" ]; then
                             edit_msg "$CHAT_ID" "$MSG_ID" "⏳ 正在向 \`$TARGET_NODE\` ($AGENT_IP) 下发 [$ACTION_TYPE] 指令，请稍候..."
                         else
                             send_msg "$CHAT_ID" "⏳ 正在向 \`$TARGET_NODE\` ($AGENT_IP) 下发 [$ACTION_TYPE] 指令，请稍候..."
