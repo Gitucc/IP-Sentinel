@@ -465,18 +465,19 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         SAFE_PUBLIC_IP="$PUBLIC_IP"
     fi
 
-    # ==========================================================
-    # [v4.2.0 核心架构] 控制面(通讯)与数据面(养护)分离架构
-    # ==========================================================
     COMM_IP="$PUBLIC_IP"
     if [[ "$PUBLIC_IP" == *":"* ]]; then
         echo -e "\n\033[36m[4.6/7] 正在构建双轨通讯分离架构 (Control Plane Separation)...\033[0m"
         echo -e " \033[33m⚠️ 检测到养护锚点为 IPv6，正在嗅探本机 IPv4 以构建防 MTU 黑洞通讯专线...\033[0m"
-        if [[ -n "$DETECT_V4" ]]; then
+        
+        # [终极防线] 拦截 WARP IP (如 104.28.x.x) 及各类云服务商大内网/CGNAT 保留段
+        if [[ -n "$DETECT_V4" ]] && \
+           ! [[ "$DETECT_V4" =~ ^104\.28\. ]] && \
+           ! [[ "$DETECT_V4" =~ ^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\. ]]; then
             COMM_IP="$DETECT_V4"
             echo -e " \033[32m✅ 成功建立双轨架构: 养护数据流走 IPv6 ($PUBLIC_IP)，中枢控制流走 IPv4 ($COMM_IP)\033[0m"
         else
-            echo -e " \033[33m⚠️ 本机无公网 IPv4，双轨降级为纯 IPv6 单轨模式。\033[0m"
+            echo -e " \033[33m⚠️ 本机无公网 IPv4 或检测到 WARP/NAT 伪装 IP，为防阻断，双轨已安全降级为纯 IPv6 单轨模式。\033[0m"
         fi
     fi
 
@@ -608,16 +609,23 @@ if [ "$UPGRADE_MODE" == "true" ]; then
         SAFE_PUBLIC_IP="${PUBLIC_IP}"
     fi
 
-    # [v4.2.0 热修复] 为老版本司令部平滑补齐双轨通讯 IP
+    # [v4.2.0 热修复] 为老版本司令部平滑补齐双轨通讯 IP (含严格入站存活校验)
     if ! grep -q "^COMM_IP=" "$CONFIG_FILE"; then
         echo -e "\n🔄 [平滑迁移] 正在为老节点无损注入 v4.2.0 双轨通讯架构..."
         TMP_PUB_IP=$(grep "^PUBLIC_IP=" "$CONFIG_FILE" | cut -d'"' -f2 | tr -d '[]')
+        
         if [[ "$TMP_PUB_IP" == *":"* ]]; then
             TMP_V4=$(curl -4 -s -m 3 api.ip.sb/ip 2>/dev/null | tr -d '[:space:]')
-            if [ -n "$TMP_V4" ]; then
+            
+            # [终极防线] 拦截 WARP IP (如 104.28.x.x 等 Cloudflare 段) 及各类内网 NAT 段
+            # 注: api.ip.sb 返回的一般是出网公网 IP，极少是 10./192. 但为防万一全面封锁
+            if [[ -n "$TMP_V4" ]] && \
+               ! [[ "$TMP_V4" =~ ^104\.28\. ]] && \
+               ! [[ "$TMP_V4" =~ ^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\. ]]; then
                 NEW_COMM_IP="$TMP_V4"
-                echo -e " \033[32m✅ 已成功抓取备用 IPv4 ($NEW_COMM_IP) 作为控制面通讯专线。\033[0m"
+                echo -e " \033[32m✅ 成功建立双轨架构: 养护走 IPv6，中枢控制走 IPv4 ($NEW_COMM_IP)\033[0m"
             else
+                echo -e " \033[33m⚠️ 嗅探到的备用 IPv4 疑似为内网 NAT 或 WARP 伪装 IP，存在无法入站的风险，已安全退回纯 IPv6 单轨模式。\033[0m"
                 NEW_COMM_IP="[$TMP_PUB_IP]"
             fi
         else
