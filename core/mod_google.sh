@@ -358,30 +358,34 @@ else
     esac
 fi
 
+# ==========================================================
+# [v4.2.3 修复 - PR #82 剥离探测身份]
+# 抛弃模拟人类漫游时使用的混杂老旧 UA 及污染 Cookie，
+# 强制使用绝对干净且现代的 Windows Chrome UA 发起探针裸请求，
+# 确保边缘服务器必定下发完整的 SPA 框架页面，防止 INNERTUBE 提取报错。
+# ==========================================================
+PROBE_UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+extract_yt_gl() {
+    grep -Eo '"(contentRegion|countryCode|INNERTUBE_CONTEXT_GL|GL)":"[A-Za-z]{2}"' | head -n 1 | cut -d'"' -f4 | tr 'a-z' 'A-Z'
+}
+
 # 核心 2: YouTube Premium 区域锁嗅探
 YT_PR_GL=""
-# [修复] 必须带上本轮循环的专属 UA (-A "$SESSION_UA")，防止被 Google CDN 丢进无状态爬虫兜底页
-# [v4.1.2] 追加持久化 Cookie
-YT_PR_HTML=$(curl "${CURL_BIND_ARGS[@]}" "$DYNAMIC_IP_PREF" -m 10 -s -L -b "$COOKIE_FILE" -c "$COOKIE_FILE" -A "$SESSION_UA" "https://www.youtube.com/premium")
+YT_PR_HTML=$(curl "${CURL_BIND_ARGS[@]}" "$DYNAMIC_IP_PREF" -m 12 -s -L -A "$PROBE_UA" "https://www.youtube.com/premium")
 if [[ "$YT_PR_HTML" == *"www.google.cn"* ]]; then
     YT_PR_GL="CN"
 else
-    YT_PR_GL=$(echo "$YT_PR_HTML" | grep -o '"contentRegion":"[A-Za-z]\{2\}"' | head -n 1 | cut -d'"' -f4 | tr 'a-z' 'A-Z')
-    [ -z "$YT_PR_GL" ] && YT_PR_GL=$(echo "$YT_PR_HTML" | grep -o '"countryCode":"[A-Za-z]\{2\}"' | head -n 1 | cut -d'"' -f4 | tr 'a-z' 'A-Z')
-    [ -z "$YT_PR_GL" ] && YT_PR_GL=$(echo "$YT_PR_HTML" | grep -o '"INNERTUBE_CONTEXT_GL":"[A-Za-z]\{2\}"' | head -n 1 | cut -d'"' -f4 | tr 'a-z' 'A-Z')
+    YT_PR_GL=$(printf '%s' "$YT_PR_HTML" | extract_yt_gl)
 fi
 
 # 核心 3: YouTube Music 区域锁嗅探
 YT_MU_GL=""
-# [修复] 同样加持 UA 装甲，强行唤出完整版前端框架
-# [v4.1.2] 追加持久化 Cookie
-YT_MU_HTML=$(curl "${CURL_BIND_ARGS[@]}" "$DYNAMIC_IP_PREF" -m 10 -s -L -b "$COOKIE_FILE" -c "$COOKIE_FILE" -A "$SESSION_UA" "https://music.youtube.com/")
+YT_MU_HTML=$(curl "${CURL_BIND_ARGS[@]}" "$DYNAMIC_IP_PREF" -m 12 -s -L -A "$PROBE_UA" "https://music.youtube.com/")
 if [[ "$YT_MU_HTML" == *"www.google.cn"* ]]; then
     YT_MU_GL="CN"
 else
-    YT_MU_GL=$(echo "$YT_MU_HTML" | grep -o '"INNERTUBE_CONTEXT_GL":"[A-Za-z]\{2\}"' | head -n 1 | cut -d'"' -f4 | tr 'a-z' 'A-Z')
-    [ -z "$YT_MU_GL" ] && YT_MU_GL=$(echo "$YT_MU_HTML" | grep -o '"countryCode":"[A-Za-z]\{2\}"' | head -n 1 | cut -d'"' -f4 | tr 'a-z' 'A-Z')
-    [ -z "$YT_MU_GL" ] && YT_MU_GL=$(echo "$YT_MU_HTML" | grep -o '"GL":"[A-Za-z]\{2\}"' | head -n 1 | cut -d'"' -f4 | tr 'a-z' 'A-Z')
+    YT_MU_GL=$(printf '%s' "$YT_MU_HTML" | extract_yt_gl)
 fi
 
 # [坐标规整] 兼容横杠分割体系，并修正英区缩写
