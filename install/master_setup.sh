@@ -470,21 +470,3 @@ do_master_summary() {
     echo -e "========================================================\n"
 }
 
-# ==========================================================
-# 司令部中枢主执行流
-# ==========================================================
-SECURE_TMP=$(mktemp -d /tmp/ips_master.XXXXXX)
-trap 'rm -rf "$SECURE_TMP" 2>/dev/null' EXIT
-trap 'exit 130' INT QUIT
-trap 'exit 143' TERM
-
-REPO_RAW_URL=${REPO_RAW_URL:-"https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"}
-
-do_master_env_precheck
-do_fetch_master_version
-do_master_handle_menu
-do_master_clean_env
-do_master_config
-do_master_init_db
-do_master_deploy_core
-do_master_summary
