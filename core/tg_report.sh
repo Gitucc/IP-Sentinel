@@ -125,7 +125,7 @@ esac
 # ==========================================================
 LOG_CONTENT=$(tail -n 1000 "$LOG_FILE" 2>/dev/null)
 
-# 检测当前是否有正在运行的后台检测任务
+# 利用文件锁的独占状态判定后台任务是否运行，避免高频检测产生竞争
 IS_RUNNING="false"
 if ! flock -n /tmp/ip_sentinel_runner.lock true 2>/dev/null; then
     IS_RUNNING="true"
@@ -134,7 +134,9 @@ fi
 if [ -z "$LOG_CONTENT" ]; then
     local run_tip=""
     if [ "$IS_RUNNING" == "true" ]; then
-        run_tip="%0A⏳ *检测到有维护任务正在后台执行，数据将在本轮结束后载入，请稍候...*"
+        run_tip="%0A⏳ *状态: 维护任务正在后台执行中，最新数据将在本轮结束后载入，请稍候...*"
+    else
+        run_tip="%0A⏳ *提示: 战报数据会在每次巡逻/维护任务完成后自动更新。*"
     fi
     read -r -d '' MSG <<EOT
 🛑 **[IP-Sentinel] 告警：节点异常**
@@ -201,7 +203,11 @@ else
     if [ "$IS_RUNNING" == "true" ]; then
         MSG="$MSG
 
-⏳ **提示**: 节点当前有维护任务正在后台执行，本次数据将在本轮结束后自动更新。"
+⏳ **状态**: 维护任务正在后台执行中，最新数据将在本轮结束后自动更新。"
+    else
+        MSG="$MSG
+
+⏳ **更新机制**: 战报数据会在每次巡逻/维护任务完成后自动更新。"
     fi
 
 fi

@@ -417,7 +417,8 @@ while true; do
                     if [ -z "$NODE_DATA" ]; then
                         send_msg "$CHAT_ID" "⚠️ 您名下暂无在线节点。"
                     else
-                        send_msg "$CHAT_ID" "📢 **正在获取各在线节点简报...**%0A*(由于防限流排队发送机制，简报将依次送达。若后台有刚启动的维护任务，最新数据可能会有约 30 秒的同步延迟)*"
+                        NODE_COUNT=$(echo "$NODE_DATA" | grep -c '^')
+                        send_msg "$CHAT_ID" "📢 **正在获取全局简报...**%0A*(已唤醒 ${NODE_COUNT} 个节点。由于防限流排队发送机制，简报将依次送达。若后台有刚启动的维护任务，最新数据将在任务完成后自动更新)*"
                         echo "$NODE_DATA" | while IFS='|' read -r NNAME AIP APORT; do
                             dispatch_agent_request "$AIP" "$APORT" "/trigger_report" "" "$NNAME" > /dev/null &
                             sleep 2  
@@ -430,7 +431,8 @@ while true; do
                     if [ -z "$NODE_DATA" ]; then
                         send_msg "$CHAT_ID" "⚠️ 您名下暂无在线节点。"
                     else
-                        send_msg "$CHAT_ID" "📢 **正在唤醒所有节点执行系统维护...**%0A*(任务已在各节点后台异步启动，整轮耗时约 30-60 秒，完成后自动更新数据)*"
+                        NODE_COUNT=$(echo "$NODE_DATA" | grep -c '^')
+                        send_msg "$CHAT_ID" "📢 **正在唤醒所有节点执行系统维护...**%0A*(已向 ${NODE_COUNT} 个节点下发维护指令。任务已在各节点后台异步启动，整轮耗时约 30-60 秒，完成后数据会自动更新)*"
                         echo "$NODE_DATA" | while IFS='|' read -r NNAME AIP APORT; do
                             dispatch_agent_request "$AIP" "$APORT" "/trigger_run" "" "$NNAME" > /dev/null &
                             sleep 0.2  
@@ -805,14 +807,18 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                         elif [[ "$RESPONSE" == *"403"* ]]; then
                             TEXT_RES="⚠️ **拒绝执行**：该节点未在本地开启此模块，请检查安装时的配置！"
                         else
-                            if [ "$ACTION_TYPE" == "google" ] || [ "$ACTION_TYPE" == "run" ]; then 
+                             if [ "$ACTION_TYPE" == "google" ]; then 
                                 TEXT_RES="✅ 节点 \`$TARGET_NODE\` 回应: 📍 Google 纠偏程序启动。"
+                            elif [ "$ACTION_TYPE" == "run" ]; then 
+                                TEXT_RES="✅ 节点 \`$TARGET_NODE\` 回应: ⚙️ 系统维护与巡逻程序已启动。*(任务正在后台异步执行，最新数据将在本轮结束后自动更新)*"
                             elif [ "$ACTION_TYPE" == "trust" ]; then 
                                 TEXT_RES="✅ 节点 \`$TARGET_NODE\` 回应: 🛡️ IP 信用净化程序启动。"
                             elif [ "$ACTION_TYPE" == "quality" ]; then 
                                 TEXT_RES="✅ 节点 \`$TARGET_NODE\` 回应: 🔍 体检探针已投放！请等待战报回传。"
                             elif [ "$ACTION_TYPE" == "log" ]; then 
                                 TEXT_RES="✅ 节点 \`$TARGET_NODE\` 正在抓取日志..."
+                            elif [ "$ACTION_TYPE" == "report" ]; then 
+                                TEXT_RES="✅ 节点 \`$TARGET_NODE\` 回应: 📊 正在生成并回传单机战报..."
                             else 
                                 TEXT_RES="✅ 节点 \`$TARGET_NODE\` 接收指令: $ACTION_TYPE"
                             fi
