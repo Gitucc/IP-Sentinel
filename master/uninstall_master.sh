@@ -28,7 +28,7 @@ fi
 echo "========================================================"
 
 echo -e "\n⚠️ 警告: 此操作将永久删除包含所有节点档案的 SQLite 数据库！"
-read -p "确定要继续卸载吗？(y/n) [默认 n]: " CONFIRM_DEL
+read -e -p "确定要继续卸载吗？(y/n) [默认 n]: " CONFIRM_DEL
 if [[ ! "$CONFIRM_DEL" =~ ^[Yy]$ ]]; then
     echo "已取消卸载操作。"
     exit 0

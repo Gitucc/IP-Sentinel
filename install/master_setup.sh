@@ -8,6 +8,26 @@
 stty erase ^H 2>/dev/null || true
 stty erase '^?' 2>/dev/null || true
 
+# 模拟终端物理退格与 ANSI 控制码处理，从数据流层面修正退格污染
+process_backspaces() {
+    local input="$1"
+    local output=""
+    local i
+    for (( i=0; i<${#input}; i++ )); do
+        local char="${input:i:1}"
+        if [[ "$char" == $'\x08' || "$char" == $'\x7f' ]]; then
+            output="${output%?}"
+        else
+            output+="$char"
+        fi
+    done
+    local ansi_pattern=$'\x1b''\[[0-9;]*[a-zA-Z~]'
+    while [[ "$output" =~ $ansi_pattern ]]; do
+        output="${output//${BASH_REMATCH[0]}/}"
+    done
+    echo "$output"
+}
+
 # 为了解决 SSH 客户端因终端映射配置差异而导致的退格键转换为控制字符（如 ^H、^?）并破坏白名单及 Token 配置文件的缺陷，
 # 引入统一的输入数据过滤器与二次确认交互逻辑。此机制可在字符解析和二次交互两个维度同时拦截错误输入。
 safe_read_input() {
@@ -24,11 +44,12 @@ safe_read_input() {
     fi
 
     while true; do
-        if ! read -p "$prompt_msg" raw_val; then
+        if ! read -e -p "$prompt_msg" raw_val; then
             echo -e "\n\033[31m❌ 输入通道已断开，安装终止。\033[0m"
             exit 130
         fi
-        clean_val=$(echo "$raw_val" | tr -d '\b\010\177' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        clean_val=$(process_backspaces "$raw_val")
+        clean_val=$(echo "$clean_val" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
         
         if [ -z "$clean_val" ] && [ -n "$default_val" ]; then
             clean_val="$default_val"
@@ -88,11 +109,12 @@ safe_read_input() {
         if [ "$is_valid" = true ]; then
             if [ "$confirm_needed" = "true" ]; then
                 echo -e "💡 确认输入为: \033[36m$clean_val\033[0m"
-                if ! read -p "❓ 确认无误？(y/n, 默认y): " confirm_yn; then
+                if ! read -e -p "❓ 确认无误？(y/n, 默认y): " confirm_yn; then
                     echo -e "\n\033[31m❌ 输入通道已断开，安装终止。\033[0m"
                     exit 130
                 fi
-                confirm_yn=$(echo "$confirm_yn" | tr -d '\b\010\177' | tr -d '[:space:]')
+                confirm_yn=$(process_backspaces "$confirm_yn")
+                confirm_yn=$(echo "$confirm_yn" | tr -d '[:space:]')
                 if [[ -z "$confirm_yn" || "$confirm_yn" =~ ^[Yy]$ ]]; then
                     eval "$var_name=\$clean_val"
                     break
