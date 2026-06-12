@@ -4,6 +4,108 @@
 # 核心功能: Master 环境清洗、令牌交互、SQLite 建库、守护进程注入与结果呈现
 # ==========================================================
 
+# 激活终端退格自适应，防止 SSH 误触产生 ^H / ^? 控制字符
+stty erase ^H 2>/dev/null || true
+stty erase '^?' 2>/dev/null || true
+
+# 为了解决 SSH 客户端因终端映射配置差异而导致的退格键转换为控制字符（如 ^H、^?）并破坏白名单及 Token 配置文件的缺陷，
+# 引入统一的输入数据过滤器与二次确认交互逻辑。此机制可在字符解析和二次交互两个维度同时拦截错误输入。
+safe_read_input() {
+    local var_name="$1"
+    local prompt_msg="$2"
+    local default_val="$3"
+    local val_type="$4"
+    local raw_val=""
+    local clean_val=""
+    local confirm_needed="false"
+
+    if [[ "$val_type" == "chatid" || "$val_type" == "token" || "$val_type" == "port" || "$val_type" == "ip" || "$val_type" == "any" ]]; then
+        confirm_needed="true"
+    fi
+
+    while true; do
+        if ! read -p "$prompt_msg" raw_val; then
+            echo -e "\n\033[31m❌ 输入通道已断开，安装终止。\033[0m"
+            exit 130
+        fi
+        clean_val=$(echo "$raw_val" | tr -d '\b\010\177' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        
+        if [ -z "$clean_val" ] && [ -n "$default_val" ]; then
+            clean_val="$default_val"
+        fi
+
+        local is_valid=true
+        case "$val_type" in
+            yn)
+                if [[ -z "$clean_val" ]]; then
+                    clean_val="$default_val"
+                fi
+                if [[ ! "$clean_val" =~ ^[YyNn]$ ]]; then
+                    echo -e "\033[31m⚠️ 输入无效，请输入 y 或 n。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            range:*)
+                local min=$(echo "$val_type" | cut -d: -f2)
+                local max=$(echo "$val_type" | cut -d: -f3)
+                if [[ ! "$clean_val" =~ ^[0-9]+$ ]] || (( clean_val < min || clean_val > max )); then
+                    echo -e "\033[31m⚠️ 输入无效，请输入介于 $min 到 $max 之间的数字。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            chatid)
+                clean_val=$(echo "$clean_val" | tr -cd '0-9-')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ Chat ID 不能为空，且仅限数字与负号，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            token)
+                clean_val=$(echo "$clean_val" | tr -d '[:space:]' | tr -cd 'a-zA-Z0-9_:-')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ Token 不能为空，且只允许字母、数字及下划线/冒号/减号，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            port)
+                if [[ ! "$clean_val" =~ ^[0-9]+$ ]] || (( clean_val < 1 || clean_val > 65535 )); then
+                    echo -e "\033[31m⚠️ 端口范围应为 1-65535。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            ip)
+                clean_val=$(echo "$clean_val" | tr -cd 'a-fA-F0-9.:[]')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ IP 地址不能为空，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            any)
+                clean_val=$(echo "$clean_val" | tr -d '"'\''\`\$\|&;<>')
+                ;;
+        esac
+
+        if [ "$is_valid" = true ]; then
+            if [ "$confirm_needed" = "true" ]; then
+                echo -e "💡 确认输入为: \033[36m$clean_val\033[0m"
+                if ! read -p "❓ 确认无误？(y/n, 默认y): " confirm_yn; then
+                    echo -e "\n\033[31m❌ 输入通道已断开，安装终止。\033[0m"
+                    exit 130
+                fi
+                confirm_yn=$(echo "$confirm_yn" | tr -d '\b\010\177' | tr -d '[:space:]')
+                if [[ -z "$confirm_yn" || "$confirm_yn" =~ ^[Yy]$ ]]; then
+                    eval "$var_name=\$clean_val"
+                    break
+                fi
+            else
+                eval "$var_name=\$clean_val"
+                break
+            fi
+        fi
+    done
+}
+
+
 is_systemd() {
     command -v systemctl >/dev/null 2>&1 || return 1
     [ -d /run/systemd/system ] || return 1
@@ -80,9 +182,7 @@ do_master_handle_menu() {
         echo -e "\n请选择操作:"
         echo "  1) 🚀 部署中枢管理节点"
         echo "  2) 🗑️ 卸载中枢管理节点"
-        read -p "请输入选择 [1-2] (默认1): " ACTION_CHOICE
-
-        ACTION_CHOICE=${ACTION_CHOICE:-1}
+        safe_read_input ACTION_CHOICE "请输入选择 [1-2] (默认1): " "1" "range:1:2"
 
         if [ "$ACTION_CHOICE" == "2" ]; then
             echo -e "\n⏳ 正在拉取卸载程序..."
@@ -98,10 +198,10 @@ do_master_handle_menu() {
 
         if [ "$ACTION_CHOICE" == "1" ] && [ -f "${MASTER_DIR}/master.conf" ]; then
             echo -e "\n\033[33m💡 司令部雷达提示：检测到本机已部署过 Master 中枢。\033[0m"
-            read -p "👉 是否按原配置直接进行平滑升级？(y/n, 默认y): " UPGRADE_CHOICE
-            if [[ -z "$UPGRADE_CHOICE" || "$UPGRADE_CHOICE" =~ ^[Yy]$ ]]; then
+            safe_read_input UPGRADE_CHOICE "👉 是否按原配置直接进行平滑升级？(y/n, 默认y): " "y" "yn"
+            if [[ "$UPGRADE_CHOICE" =~ ^[Yy]$ ]]; then
                 UPGRADE_MODE="true"
-                read -p "👉 是否保留历史节点数据库 (SQLite)？(y/n, 默认y): " DB_CHOICE
+                safe_read_input DB_CHOICE "👉 是否保留历史节点数据库 (SQLite)？(y/n, 默认y): " "y" "yn"
                 if [[ "$DB_CHOICE" =~ ^[Nn]$ ]]; then
                     KEEP_DB="false"
                 fi
@@ -141,20 +241,13 @@ do_master_clean_env() {
 do_master_config() {
     if [ "$UPGRADE_MODE" == "false" ]; then
         echo -e "\n[2/4] 配置控制中枢机器人:"
-        read -p "请输入 Telegram Bot Token: " TG_TOKEN
-        
-        read -p "请输入您的管理者 Chat ID (白名单安全校验，仅限数字): " RAW_CHAT_ID
-        ALLOWED_CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
-        while [ -z "$ALLOWED_CHAT_ID" ]; do
-            read -p "⚠️ Chat ID 不能为空，请重新输入: " RAW_CHAT_ID
-            ALLOWED_CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
-        done
+        safe_read_input TG_TOKEN "请输入 Telegram Bot Token: " "" "token"
+        safe_read_input ALLOWED_CHAT_ID "请输入您的管理者 Chat ID (白名单安全校验，仅限数字): " "" "chatid"
         
         echo -e "\n请选择您的部署环境身份:"
         echo "  1) 🛡️ 私有独立中枢 (默认推荐，保留完整 OTA 遥控权限)"
         echo "  2) ☁️ 官方公共网关 (面向大众服务，将强制物理隐藏全局 OTA 按钮防滥用)"
-        read -p "请输入选择 [1-2] (默认1): " GATEWAY_TYPE
-        GATEWAY_TYPE=${GATEWAY_TYPE:-1}
+        safe_read_input GATEWAY_TYPE "请输入选择 [1-2] (默认1): " "1" "range:1:2"
         
         IS_OFFICIAL_GATEWAY="false"
         ENABLE_MASTER_OTA="false"
@@ -164,7 +257,7 @@ do_master_config() {
         else
             echo -e "\n[2.1/4] 司令部自我进化授权"
             echo -e "💡 开启后，您可以在 TG 菜单一键将中枢核心系统热更新至最新版本。"
-            read -p "是否允许司令部接收 OTA 重构指令？(y/n, 默认y): " M_OTA_CHOICE
+            safe_read_input M_OTA_CHOICE "是否允许司令部接收 OTA 重构指令？(y/n, 默认y): " "y" "yn"
             if [[ "$M_OTA_CHOICE" =~ ^[Nn]$ ]]; then
                 ENABLE_MASTER_OTA="false"
                 echo -e "🛡️ \033[33m已关闭司令部 OTA 权限，中枢内核未来仅支持 SSH 升级。\033[0m"
@@ -180,17 +273,11 @@ do_master_config() {
         
         echo -e "\n[2.2/4] 司令部展示别名设定 (用于面板区分多台 VPS)"
         echo -e "💡 系统底层的不可变主键为: \033[33m${MASTER_NODE}\033[0m"
-        read -p "请输入中枢展示别名 (如'美西主控机', 回车使用默认): " CUSTOM_MASTER_ALIAS
+        safe_read_input CUSTOM_MASTER_ALIAS "请输入中枢展示别名 (如'美西主控机', 回车使用默认): " "$MASTER_NODE" "any"
 
-        if [ -n "$CUSTOM_MASTER_ALIAS" ]; then
-            # 强制声明 UTF-8 环境，丢弃危险的 cut -c 字节切分，改用 Bash 原生字符切片防御中文乱码
-            export LC_ALL=C.UTF-8 2>/dev/null || export LC_ALL=en_US.UTF-8 2>/dev/null || true
-            CLEAN_ALIAS=$(echo "$CUSTOM_MASTER_ALIAS" | tr -d '"'\''\`\$\|&;<>\n\r')
-            MASTER_NODE_NAME="${CLEAN_ALIAS:0:20}"
-            [ -z "$MASTER_NODE_NAME" ] && MASTER_NODE_NAME="$MASTER_NODE"
-        else
-            MASTER_NODE_NAME="$MASTER_NODE"
-        fi
+        export LC_ALL=C.UTF-8 2>/dev/null || export LC_ALL=en_US.UTF-8 2>/dev/null || true
+        MASTER_NODE_NAME="${CUSTOM_MASTER_ALIAS:0:20}"
+        [ -z "$MASTER_NODE_NAME" ] && MASTER_NODE_NAME="$MASTER_NODE"
         echo -e "✅ 已锁定司令部展示别名: \033[32m$MASTER_NODE_NAME\033[0m"
 
         cat > "${MASTER_DIR}/master.conf" << EOF
@@ -212,12 +299,7 @@ EOF
         fi
         if ! grep -q "^ALLOWED_CHAT_ID=" "${MASTER_DIR}/master.conf"; then
             echo -e "\n\033[33m⚠️ [安全增强] 检测到中枢升级未配置管理者白名单 ALLOWED_CHAT_ID。\033[0m"
-            read -p "请输入您的管理者 Chat ID 以确立防线 (仅限数字): " RAW_CHAT_ID
-            ALLOWED_CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
-            while [ -z "$ALLOWED_CHAT_ID" ]; do
-                read -p "⚠️ Chat ID 不能为空，请重新输入: " RAW_CHAT_ID
-                ALLOWED_CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
-            done
+            safe_read_input ALLOWED_CHAT_ID "请输入您的管理者 Chat ID 以确立防线 (仅限数字): " "" "chatid"
             echo "ALLOWED_CHAT_ID=\"$ALLOWED_CHAT_ID\"" >> "${MASTER_DIR}/master.conf"
         fi
         if ! grep -q "^ENABLE_MASTER_OTA=" "${MASTER_DIR}/master.conf"; then
@@ -370,7 +452,9 @@ do_master_summary() {
 # 司令部中枢主执行流
 # ==========================================================
 SECURE_TMP=$(mktemp -d /tmp/ips_master.XXXXXX)
-trap 'rm -rf "$SECURE_TMP" 2>/dev/null' EXIT INT TERM
+trap 'rm -rf "$SECURE_TMP" 2>/dev/null' EXIT
+trap 'exit 130' INT QUIT
+trap 'exit 143' TERM
 
 REPO_RAW_URL=${REPO_RAW_URL:-"https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"}
 

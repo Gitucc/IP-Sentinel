@@ -5,9 +5,108 @@
 # 核心功能: 环境解析、无损热升级部署与环境隔离
 # ==========================================================
 
-# ==========================================================
-# [权限鉴权] 严格防范低权限执行导致的组件缺失
-# ==========================================================
+# 激活终端退格自适应，防止 SSH 误触产生 ^H / ^? 控制字符
+stty erase ^H 2>/dev/null || true
+stty erase '^?' 2>/dev/null || true
+
+# 为了解决 SSH 客户端因终端映射配置差异而导致的退格键转换为控制字符（如 ^H、^?）并破坏白名单及 Token 配置文件的缺陷，
+# 引入统一的输入数据过滤器与二次确认交互逻辑。此机制可在字符解析和二次交互两个维度同时拦截错误输入。
+safe_read_input() {
+    local var_name="$1"
+    local prompt_msg="$2"
+    local default_val="$3"
+    local val_type="$4"
+    local raw_val=""
+    local clean_val=""
+    local confirm_needed="false"
+
+    if [[ "$val_type" == "chatid" || "$val_type" == "token" || "$val_type" == "port" || "$val_type" == "ip" || "$val_type" == "any" ]]; then
+        confirm_needed="true"
+    fi
+
+    while true; do
+        if ! read -p "$prompt_msg" raw_val; then
+            echo -e "\n\033[31m❌ 输入通道已断开，安装终止。\033[0m"
+            exit 130
+        fi
+        clean_val=$(echo "$raw_val" | tr -d '\b\010\177' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        
+        if [ -z "$clean_val" ] && [ -n "$default_val" ]; then
+            clean_val="$default_val"
+        fi
+
+        local is_valid=true
+        case "$val_type" in
+            yn)
+                if [[ -z "$clean_val" ]]; then
+                    clean_val="$default_val"
+                fi
+                if [[ ! "$clean_val" =~ ^[YyNn]$ ]]; then
+                    echo -e "\033[31m⚠️ 输入无效，请输入 y 或 n。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            range:*)
+                local min=$(echo "$val_type" | cut -d: -f2)
+                local max=$(echo "$val_type" | cut -d: -f3)
+                if [[ ! "$clean_val" =~ ^[0-9]+$ ]] || (( clean_val < min || clean_val > max )); then
+                    echo -e "\033[31m⚠️ 输入无效，请输入介于 $min 到 $max 之间的数字。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            chatid)
+                clean_val=$(echo "$clean_val" | tr -cd '0-9-')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ Chat ID 不能为空，且仅限数字与负号，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            token)
+                clean_val=$(echo "$clean_val" | tr -d '[:space:]' | tr -cd 'a-zA-Z0-9_:-')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ Token 不能为空，且只允许字母、数字及下划线/冒号/减号，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            port)
+                if [[ ! "$clean_val" =~ ^[0-9]+$ ]] || (( clean_val < 1 || clean_val > 65535 )); then
+                    echo -e "\033[31m⚠️ 端口范围应为 1-65535。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            ip)
+                clean_val=$(echo "$clean_val" | tr -cd 'a-fA-F0-9.:[]')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ IP 地址不能为空，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            any)
+                clean_val=$(echo "$clean_val" | tr -d '"'\''\`\$\|&;<>')
+                ;;
+        esac
+
+        if [ "$is_valid" = true ]; then
+            if [ "$confirm_needed" = "true" ]; then
+                echo -e "💡 确认输入为: \033[36m$clean_val\033[0m"
+                if ! read -p "❓ 确认无误？(y/n, 默认y): " confirm_yn; then
+                    echo -e "\n\033[31m❌ 输入通道已断开，安装终止。\033[0m"
+                    exit 130
+                fi
+                confirm_yn=$(echo "$confirm_yn" | tr -d '\b\010\177' | tr -d '[:space:]')
+                if [[ -z "$confirm_yn" || "$confirm_yn" =~ ^[Yy]$ ]]; then
+                    eval "$var_name=\$clean_val"
+                    break
+                fi
+            else
+                eval "$var_name=\$clean_val"
+                break
+            fi
+        fi
+    done
+}
+
+
 if [ "$EUID" -ne 0 ]; then
   echo -e "\033[31m❌ 权限被拒绝: 部署 IP-Sentinel 需要最高系统权限。\033[0m"
   echo -e "💡 请切换到 root 用户 (执行 su root 或 sudo -i) 后重新运行指令。"
@@ -16,7 +115,9 @@ fi
 
 # [沙盒机制] 创建含高强度熵值的安全挂载点，并在异常断开时确保物理覆写销毁
 SECURE_TMP=$(mktemp -d /tmp/ips_install.XXXXXX)
-trap 'rm -rf "$SECURE_TMP"' EXIT HUP INT QUIT TERM
+trap 'rm -rf "$SECURE_TMP" 2>/dev/null' EXIT HUP
+trap 'exit 130' INT QUIT
+trap 'exit 143' TERM
 
 # ==========================================================
 # [环境侦测] 系统架构检测与自适应决策
@@ -165,9 +266,7 @@ else
     echo -e "\n请选择操作:"
     echo "  1) 🚀 部署边缘节点 (进入全球节点配置)"
     echo "  2) 🗑️ 一键卸载 IP-Sentinel"
-    read -p "请输入选择 [1-2] (默认1): " ACTION_CHOICE
-
-    ACTION_CHOICE=${ACTION_CHOICE:-1}
+    safe_read_input ACTION_CHOICE "请输入选择 [1-2] (默认1): " "1" "range:1:2"
 
     if [ "$ACTION_CHOICE" == "2" ]; then
         echo -e "\n⏳ 正在拉取卸载程序..."
@@ -184,10 +283,10 @@ else
 
     if [ "$ACTION_CHOICE" == "1" ] && [ -f "$CONFIG_FILE" ]; then
         echo -e "\n\033[33m💡 哨兵雷达提示：检测到本机已部署过 IP-Sentinel。\033[0m"
-        read -p "👉 是否按原配置直接进行平滑升级？(y/n, 默认y): " UPGRADE_CHOICE
-        if [[ -z "$UPGRADE_CHOICE" || "$UPGRADE_CHOICE" =~ ^[Yy]$ ]]; then
+        safe_read_input UPGRADE_CHOICE "👉 是否按原配置直接进行平滑升级？(y/n, 默认y): " "y" "yn"
+        if [[ "$UPGRADE_CHOICE" =~ ^[Yy]$ ]]; then
             UPGRADE_MODE="true"
-            read -p "👉 是否保留历史运行日志？(y/n, 默认y): " LOG_CHOICE
+            safe_read_input LOG_CHOICE "👉 是否保留历史运行日志？(y/n, 默认y): " "y" "yn"
             if [[ "$LOG_CHOICE" =~ ^[Nn]$ ]]; then
                 KEEP_LOGS="false"
             fi
@@ -250,8 +349,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         ((i++))
     done < "${SECURE_TMP}/continents.txt"
 
-    read -p "请输入选择 [1-$((i-1))] (默认1): " CONT_SEL
-    CONT_SEL=${CONT_SEL:-1}
+    safe_read_input CONT_SEL "请输入选择 [1-$((i-1))] (默认1): " "1" "range:1:$((i-1))"
     CONT_ID="${CONT_MAP[$CONT_SEL]}"
 
     echo -e "\n\033[36m📍 【第一级】正在检索 [$CONT_ID] 战区下的国家/地区...\033[0m"
@@ -264,8 +362,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         ((i++))
     done < "${SECURE_TMP}/countries.txt"
 
-    read -p "请输入选择 [1-$((i-1))] (默认1): " C_SEL
-    C_SEL=${C_SEL:-1}
+    safe_read_input C_SEL "请输入选择 [1-$((i-1))] (默认1): " "1" "range:1:$((i-1))"
     COUNTRY_ID="${COUNTRY_MAP[$C_SEL]}"
     KEYWORD_FILE="${KEYWORD_MAP[$C_SEL]}"
     REGION_CODE="$COUNTRY_ID" 
@@ -284,8 +381,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
             STATE_MAP[$i]="$s_id"
             ((i++))
         done < "${SECURE_TMP}/states.txt"
-        read -p "请输入选择 [1-$((i-1))] (默认1): " S_SEL
-        S_SEL=${S_SEL:-1}
+        safe_read_input S_SEL "请输入选择 [1-$((i-1))] (默认1): " "1" "range:1:$((i-1))"
         STATE_ID="${STATE_MAP[$S_SEL]}"
     fi
 
@@ -304,8 +400,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
             CITY_NAME_MAP[$i]="$c_name"
             ((i++))
         done < "${SECURE_TMP}/cities.txt"
-        read -p "请输入选择 [1-$((i-1))] (默认1): " CI_SEL
-        CI_SEL=${CI_SEL:-1}
+        safe_read_input CI_SEL "请输入选择 [1-$((i-1))] (默认1): " "1" "range:1:$((i-1))"
         CITY_ID="${CITY_MAP[$CI_SEL]}"
         CITY_NAME="${CITY_NAME_MAP[$CI_SEL]}"
     fi
@@ -322,7 +417,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
     ENABLE_TRUST="true"
 
     echo -e "\n[4/7] 是否接入 Master 司令部进行远程联控？ (y/n)"
-    read -p "请输入选择 [y/n] (默认n): " TG_CHOICE
+    safe_read_input TG_CHOICE "请输入选择 [y/n] (默认n): " "n" "yn"
     TG_TOKEN=""
     CHAT_ID=""
     AGENT_PORT="9527"
@@ -330,8 +425,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         echo -e "\n请选择中枢接入模式 (推荐私有部署，支持后续 OTA 远程静默升级):"
         echo "  1) 🛡️ 私有独立中枢 (需提供自建 Bot Token，推荐)"
         echo "  2) ☁️ 官方公共网关 (@OmniBeacon_bot，新手免配置)"
-        read -p "请输入选择 [1-2] (默认1): " MASTER_TYPE
-        MASTER_TYPE=${MASTER_TYPE:-1}
+        safe_read_input MASTER_TYPE "请输入选择 [1-2] (默认1): " "1" "range:1:2"
         
         if [ "$MASTER_TYPE" == "2" ]; then
             TG_TOKEN="OFFICIAL_GATEWAY_MODE" 
@@ -345,12 +439,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         else
             echo -e "\n\033[36m📘 私有 Bot 创建教程: \033[4m\033]8;;https://blog.iot-architect.com/engineering-practice/create-private-telegram-bot-via-botfather/\033\\👉 [点击此处直接在浏览器中打开]\033]8;;\033\\ 👈\033[0m"
             echo -e "\033[90m   (若您的终端较老不支持点击，请手动复制: https://blog.iot-architect.com/engineering-practice/create-private-telegram-bot-via-botfather/ )\033[0m"
-            read -p "请输入您的私有 Telegram Bot Token: " RAW_TOKEN
-            USER_TOKEN=$(echo "$RAW_TOKEN" | tr -cd 'a-zA-Z0-9_:-')
-            while [ -z "$USER_TOKEN" ]; do
-                read -p "⚠️ Token 不能为空或包含非法字符，请重新输入: " RAW_TOKEN
-                USER_TOKEN=$(echo "$RAW_TOKEN" | tr -cd 'a-zA-Z0-9_:-')
-            done
+            safe_read_input USER_TOKEN "请输入您的私有 Telegram Bot Token: " "" "token"
             
             TG_TOKEN="$USER_TOKEN"
             TG_API_URL="https://api.telegram.org/bot${TG_TOKEN}/sendMessage"
@@ -358,7 +447,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
             
             echo -e "\n\033[36m[4.1/7] OTA 远程静默升级授权\033[0m"
             echo -e "💡 开启后，您可以在 TG 面板一键将本节点热更新至最新版本。"
-            read -p "是否允许本节点接收 OTA 升级指令？(y/n, 默认y): " OTA_CHOICE
+            safe_read_input OTA_CHOICE "是否允许本节点接收 OTA 升级指令？(y/n, 默认y): " "y" "yn"
             if [[ "$OTA_CHOICE" =~ ^[Nn]$ ]]; then
                 ENABLE_OTA="false"
                 echo -e "🛡️ \033[33m已关闭 OTA 权限，本节点未来将只能通过 SSH 手动升级。\033[0m"
@@ -371,8 +460,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         echo -e "\n\033[33m💡 提示：如果您不知道下方自己的 Chat ID 是什么，可以关注 @userinfobot 获取。\033[0m"
         echo -e "\033[36m📘 查看图文教程: \033[4m\033]8;;https://blog.iot-architect.com/engineering-practice/get-telegram-personal-id-via-userinfobot/\033\\👉 [点击此处直接在浏览器中打开]\033]8;;\033\\ 👈\033[0m"
         echo -e "\033[90m   (若您的终端较老不支持点击，请手动复制: https://blog.iot-architect.com/engineering-practice/get-telegram-personal-id-via-userinfobot/ )\033[0m"
-        read -p "请输入你的 Chat ID (必须准确，否则无法联控): " RAW_CHAT_ID
-        CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
+        safe_read_input CHAT_ID "请输入你的 Chat ID (必须准确，否则无法联控): " "" "chatid"
         
         echo -e "\n\033[36m[4.2/7] 正在构建 Webhook 安全通信隧道...\033[0m"
         echo -n "🎲 正在探测可用随机端口..."
@@ -389,22 +477,12 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         echo -e "\033[33m(该端口已通过本地占用校验，可直接使用)\033[0m"
         
         while true; do
-            read -p "请输入 Webhook 监听端口 (回车采用推荐, 或手动输入): " INPUT_PORT
-            
-            if [ -z "$INPUT_PORT" ]; then
-                AGENT_PORT="$RANDOM_PORT"
-                break
+            safe_read_input INPUT_PORT "请输入 Webhook 监听端口 (回车采用推荐, 或手动输入): " "$RANDOM_PORT" "port"
+            if (ss -tuln 2>/dev/null | grep -q ":$INPUT_PORT " || netstat -tuln 2>/dev/null | grep -q ":$INPUT_PORT ") && [ "$INPUT_PORT" -ne "$RANDOM_PORT" ]; then
+                echo -e "\033[31m❌ 端口 $INPUT_PORT 已被占用，请重新输入或使用推荐端口。\033[0m"
             else
-                if [[ "$INPUT_PORT" =~ ^[0-9]+$ ]] && [ "$INPUT_PORT" -ge 1 ] && [ "$INPUT_PORT" -le 65535 ]; then
-                    if (ss -tuln 2>/dev/null | grep -q ":$INPUT_PORT " || netstat -tuln 2>/dev/null | grep -q ":$INPUT_PORT "); then
-                        echo -e "\033[31m❌ 端口 $INPUT_PORT 已被占用，请重新输入或使用推荐端口。\033[0m"
-                    else
-                        AGENT_PORT="$INPUT_PORT"
-                        break
-                    fi
-                else
-                    echo -e "\033[31m❌ 输入非法！端口范围应为 1-65535。\033[0m"
-                fi
+                AGENT_PORT="$INPUT_PORT"
+                break
             fi
         done
         echo -e "✅ 已锁定 Webhook 通讯端口: \033[32m$AGENT_PORT\033[0m"
@@ -449,8 +527,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
 
     if [ ${#IP_OPTIONS[@]} -eq 0 ]; then
         echo -e "\033[33m⚠️ 雷达受阻：未能自动探测到公网 IP，请手动指定。\033[0m"
-        read -p "请输入您要绑定的公网 IP (v4 或 v6): " RAW_PUBLIC_IP
-        PUBLIC_IP=$(echo "$RAW_PUBLIC_IP" | tr -cd 'a-fA-F0-9.:[]')
+        safe_read_input PUBLIC_IP "请输入您要绑定的公网 IP (v4 或 v6): " "" "ip"
         [[ "$PUBLIC_IP" == *":"* ]] && IP_PREF="6" || IP_PREF="4"
     else
         echo "📍 发现可用出口 IP，请选择要注册与养护的锚点:"
@@ -465,15 +542,14 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         CUSTOM_OPT=$(( ${#IP_OPTIONS[@]} + 1 ))
         echo "  $CUSTOM_OPT) ✍️ 手动指定其他 IP (适合多 IP 站群机)"
         
-        read -p "请输入选择 (默认1): " IP_CHOICE
-        IP_CHOICE=${IP_CHOICE:-1}
+        safe_read_input IP_CHOICE "请输入选择 (默认1): " "1" "range:1:$CUSTOM_OPT"
         
         if [ "$IP_CHOICE" -le "${#IP_OPTIONS[@]}" ] && [ "$IP_CHOICE" -gt 0 ]; then
             idx=$((IP_CHOICE-1))
             PUBLIC_IP="${IP_OPTIONS[$idx]}"
             IP_PREF="${IP_PROTO[$idx]}"
         elif [ "$IP_CHOICE" -eq "$CUSTOM_OPT" ]; then
-            read -p "请输入您要绑定的公网 IP (v4 或 v6): " PUBLIC_IP
+            safe_read_input PUBLIC_IP "请输入您要绑定的公网 IP (v4 或 v6): " "" "ip"
             [[ "$PUBLIC_IP" == *":"* ]] && IP_PREF="6" || IP_PREF="4"
         else
             PUBLIC_IP="${IP_OPTIONS[0]}"
@@ -541,12 +617,10 @@ if [ "$UPGRADE_MODE" == "false" ]; then
     if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
         echo -e "\n\033[36m[4.8/7] 节点展示别名设定 (用于面板友好显示)...\033[0m"
         echo -e "💡 系统底层的不可变主键为: \033[33m${NODE_NAME}\033[0m"
-        read -p "请输入节点展示别名 (如'纽约机房', 回车使用默认): " CUSTOM_ALIAS
+        safe_read_input CUSTOM_ALIAS "请输入节点展示别名 (如'纽约机房', 回车使用默认): " "$NODE_NAME" "any"
 
-        if [ -n "$CUSTOM_ALIAS" ]; then
-            NODE_ALIAS=$(echo "$CUSTOM_ALIAS" | tr -d '"'\''\`\$\|&;<>\n\r' | cut -c 1-20)
-            [ -z "$NODE_ALIAS" ] && NODE_ALIAS="$NODE_NAME"
-        fi
+        NODE_ALIAS="${CUSTOM_ALIAS:0:20}"
+        [ -z "$NODE_ALIAS" ] && NODE_ALIAS="$NODE_NAME"
         echo -e "✅ 已锁定节点展示别名: \033[32m$NODE_ALIAS\033[0m"
     fi
 

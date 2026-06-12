@@ -42,8 +42,7 @@ do_network_probe() {
 
         if [ ${#IP_OPTIONS[@]} -eq 0 ]; then
             echo -e "\033[33m⚠️ 雷达受阻：未能自动探测到公网 IP，请手动指定。\033[0m"
-            read -p "请输入您要绑定的公网 IP (v4 或 v6): " RAW_PUBLIC_IP
-            PUBLIC_IP=$(echo "$RAW_PUBLIC_IP" | tr -cd 'a-fA-F0-9.:[]')
+            safe_read_input PUBLIC_IP "请输入您要绑定的公网 IP (v4 或 v6): " "" "ip"
             [[ "$PUBLIC_IP" == *":"* ]] && IP_PREF="6" || IP_PREF="4"
         else
             echo "📍 发现可用出口 IP，请选择要注册与养护的锚点:"
@@ -58,15 +57,14 @@ do_network_probe() {
             CUSTOM_OPT=$(( ${#IP_OPTIONS[@]} + 1 ))
             echo "  $CUSTOM_OPT) ✍️ 手动指定其他 IP (适合多 IP 站群机)"
             
-            read -p "请输入选择 (默认1): " IP_CHOICE
-            IP_CHOICE=${IP_CHOICE:-1}
+            safe_read_input IP_CHOICE "请输入选择 (默认1): " "1" "range:1:$CUSTOM_OPT"
             
             if [ "$IP_CHOICE" -le "${#IP_OPTIONS[@]}" ] && [ "$IP_CHOICE" -gt 0 ]; then
                 idx=$((IP_CHOICE-1))
                 PUBLIC_IP="${IP_OPTIONS[$idx]}"
                 IP_PREF="${IP_PROTO[$idx]}"
             elif [ "$IP_CHOICE" -eq "$CUSTOM_OPT" ]; then
-                read -p "请输入您要绑定的公网 IP (v4 或 v6): " PUBLIC_IP
+                safe_read_input PUBLIC_IP "请输入您要绑定的公网 IP (v4 或 v6): " "" "ip"
                 [[ "$PUBLIC_IP" == *":"* ]] && IP_PREF="6" || IP_PREF="4"
             else
                 PUBLIC_IP="${IP_OPTIONS[0]}"
@@ -134,15 +132,10 @@ do_assemble_fallback() {
         if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
             echo -e "\n\033[36m[4.8/7] 节点展示别名设定 (用于面板友好显示)...\033[0m"
             echo -e "💡 系统底层的不可变主键为: \033[33m${NODE_NAME}\033[0m"
-            read -p "请输入节点展示别名 (如'纽约机房', 回车使用默认): " CUSTOM_ALIAS
+            safe_read_input CUSTOM_ALIAS "请输入节点展示别名 (如'纽约机房', 回车使用默认): " "$NODE_NAME" "any"
 
-            if [ -n "$CUSTOM_ALIAS" ]; then
-                # 挂载 UTF-8 环境，防止原生 Bash 在 C Locale 下对多字节汉字进行错误截断
-                export LC_ALL=C.UTF-8 2>/dev/null || export LC_ALL=en_US.UTF-8 2>/dev/null || true
-                CLEAN_ALIAS=$(echo "$CUSTOM_ALIAS" | tr -d '"'\''\`\$\|&;<>\n\r')
-                NODE_ALIAS="${CLEAN_ALIAS:0:20}"
-                [ -z "$NODE_ALIAS" ] && NODE_ALIAS="$NODE_NAME"
-            fi
+            NODE_ALIAS="${CUSTOM_ALIAS:0:20}"
+            [ -z "$NODE_ALIAS" ] && NODE_ALIAS="$NODE_NAME"
             echo -e "✅ 已锁定节点展示别名: \033[32m$NODE_ALIAS\033[0m"
         fi
     fi

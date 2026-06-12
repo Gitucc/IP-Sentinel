@@ -8,6 +8,107 @@
 # 传递中断引信
 trap 'exit 1' INT QUIT TERM
 
+# 激活终端退格自适应，防止 SSH 误触产生 ^H / ^? 控制字符
+stty erase ^H 2>/dev/null || true
+stty erase '^?' 2>/dev/null || true
+
+# 为了解决 SSH 客户端因终端映射配置差异而导致的退格键转换为控制字符（如 ^H、^?）并破坏白名单及 Token 配置文件的缺陷，
+# 引入统一的输入数据过滤器与二次确认交互逻辑。此机制可在字符解析和二次交互两个维度同时拦截错误输入。
+safe_read_input() {
+    local var_name="$1"
+    local prompt_msg="$2"
+    local default_val="$3"
+    local val_type="$4"
+    local raw_val=""
+    local clean_val=""
+    local confirm_needed="false"
+
+    if [[ "$val_type" == "chatid" || "$val_type" == "token" || "$val_type" == "port" || "$val_type" == "ip" || "$val_type" == "any" ]]; then
+        confirm_needed="true"
+    fi
+
+    while true; do
+        if ! read -p "$prompt_msg" raw_val; then
+            echo -e "\n\033[31m❌ 输入通道已断开，安装终止。\033[0m"
+            exit 130
+        fi
+        clean_val=$(echo "$raw_val" | tr -d '\b\010\177' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        
+        if [ -z "$clean_val" ] && [ -n "$default_val" ]; then
+            clean_val="$default_val"
+        fi
+
+        local is_valid=true
+        case "$val_type" in
+            yn)
+                if [[ -z "$clean_val" ]]; then
+                    clean_val="$default_val"
+                fi
+                if [[ ! "$clean_val" =~ ^[YyNn]$ ]]; then
+                    echo -e "\033[31m⚠️ 输入无效，请输入 y 或 n。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            range:*)
+                local min=$(echo "$val_type" | cut -d: -f2)
+                local max=$(echo "$val_type" | cut -d: -f3)
+                if [[ ! "$clean_val" =~ ^[0-9]+$ ]] || (( clean_val < min || clean_val > max )); then
+                    echo -e "\033[31m⚠️ 输入无效，请输入介于 $min 到 $max 之间的数字。\033[0m\n"
+                    is_valid=false
+                fi
+                ;;
+            chatid)
+                clean_val=$(echo "$clean_val" | tr -cd '0-9-')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ Chat ID 不能为空，且仅限数字与负号，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            token)
+                clean_val=$(echo "$clean_val" | tr -d '[:space:]' | tr -cd 'a-zA-Z0-9_:-')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ Token 不能为空，且只允许字母、数字及下划线/冒号/减号，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            port)
+                if [[ ! "$clean_val" =~ ^[0-9]+$ ]] || (( clean_val < 1 || clean_val > 65535 )); then
+                    echo -e "\033[31m⚠️ 端口范围应为 1-65535。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            ip)
+                clean_val=$(echo "$clean_val" | tr -cd 'a-fA-F0-9.:[]')
+                if [ -z "$clean_val" ]; then
+                    echo -e "\033[31m⚠️ IP 地址不能为空，请重新输入。\033[0m"
+                    is_valid=false
+                fi
+                ;;
+            any)
+                clean_val=$(echo "$clean_val" | tr -d '"'\''\`\$\|&;<>')
+                ;;
+        esac
+
+        if [ "$is_valid" = true ]; then
+            if [ "$confirm_needed" = "true" ]; then
+                echo -e "💡 确认输入为: \033[36m$clean_val\033[0m"
+                if ! read -p "❓ 确认无误？(y/n, 默认y): " confirm_yn; then
+                    echo -e "\n\033[31m❌ 输入通道已断开，安装终止。\033[0m"
+                    exit 130
+                fi
+                confirm_yn=$(echo "$confirm_yn" | tr -d '\b\010\177' | tr -d '[:space:]')
+                if [[ -z "$confirm_yn" || "$confirm_yn" =~ ^[Yy]$ ]]; then
+                    eval "$var_name=\$clean_val"
+                    break
+                fi
+            else
+                eval "$var_name=\$clean_val"
+                break
+            fi
+        fi
+    done
+}
+
 MODULES=(
     "env_setup.sh"
     "ui_menu.sh"
