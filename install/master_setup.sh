@@ -4,6 +4,33 @@
 # 核心功能: Master 环境清洗、令牌交互、SQLite 建库、守护进程注入与结果呈现
 # ==========================================================
 
+is_systemd() {
+    command -v systemctl >/dev/null 2>&1 || return 1
+    [ -d /run/systemd/system ] || return 1
+    return 0
+}
+
+get_os_info() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        echo "$PRETTY_NAME"
+    else
+        uname -srm
+    fi
+}
+
+get_virt_info() {
+    if grep -qaE 'docker|containerd|podman' /proc/1/cgroup 2>/dev/null || [ -f /.dockerenv ]; then
+        echo "Docker/OCI Container"
+    elif grep -qa container=lxc /proc/1/environ 2>/dev/null || [ -d /proc/vz ]; then
+        echo "LXC/OpenVZ"
+    elif command -v systemd-detect-virt >/dev/null 2>&1; then
+        systemd-detect-virt
+    else
+        echo "Unknown/Bare Metal"
+    fi
+}
+
 # 预检部分需要单独定制，因为 Master 有专属横幅
 do_master_env_precheck() {
     echo -e "\n======================================"
@@ -14,7 +41,7 @@ do_master_env_precheck() {
     if is_systemd; then
         echo -e "Init 系统 : systemd ✅"
     else
-        echo -e "Init 系统 : 非 systemd ⚠️ (将自动降维至看门狗模式)"
+        echo -e "Init 系统 : 非 systemd ⚠️ (将自动降维至守护模式)"
     fi
     echo -e "======================================\n"
     sleep 1
@@ -48,11 +75,11 @@ do_master_handle_menu() {
                 echo "MASTER_VERSION=\"$TARGET_VERSION\"" >> "${MASTER_DIR}/master.conf"
             fi
         fi
-        echo -e "\033[32m✅ 已激活 [中枢静默重构模式]，即将无损覆写内核...\033[0m"
+        echo -e "\033[32m✅ 已激活 [中枢平滑升级模式]，即将无损覆写内核...\033[0m"
     else
         echo -e "\n请选择操作:"
-        echo "  1) 🚀 部署 Master 控制中枢"
-        echo "  2) 🗑️ 一键卸载 Master 中枢"
+        echo "  1) 🚀 部署中枢管理节点"
+        echo "  2) 🗑️ 卸载中枢管理节点"
         read -p "请输入选择 [1-2] (默认1): " ACTION_CHOICE
 
         ACTION_CHOICE=${ACTION_CHOICE:-1}
@@ -116,6 +143,13 @@ do_master_config() {
         echo -e "\n[2/4] 配置控制中枢机器人:"
         read -p "请输入 Telegram Bot Token: " TG_TOKEN
         
+        read -p "请输入您的管理者 Chat ID (白名单安全校验，仅限数字): " RAW_CHAT_ID
+        ALLOWED_CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
+        while [ -z "$ALLOWED_CHAT_ID" ]; do
+            read -p "⚠️ Chat ID 不能为空，请重新输入: " RAW_CHAT_ID
+            ALLOWED_CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
+        done
+        
         echo -e "\n请选择您的部署环境身份:"
         echo "  1) 🛡️ 私有独立中枢 (默认推荐，保留完整 OTA 遥控权限)"
         echo "  2) ☁️ 官方公共网关 (面向大众服务，将强制物理隐藏全局 OTA 按钮防滥用)"
@@ -136,7 +170,7 @@ do_master_config() {
                 echo -e "🛡️ \033[33m已关闭司令部 OTA 权限，中枢内核未来仅支持 SSH 升级。\033[0m"
             else
                 ENABLE_MASTER_OTA="true"
-                echo -e "✅ \033[32m已开启司令部 OTA 权限，金蝉脱壳引信已挂载。\033[0m"
+                echo -e "✅ \033[32m已开启司令部 OTA 权限，重载引信已挂载。\033[0m"
             fi
         fi
 
@@ -160,10 +194,11 @@ do_master_config() {
         echo -e "✅ 已锁定司令部展示别名: \033[32m$MASTER_NODE_NAME\033[0m"
 
         cat > "${MASTER_DIR}/master.conf" << EOF
-# IP-Sentinel Master 本地固化配置 (v${TARGET_VERSION})
+# IP-Sentinel Master 本地配置 (v${TARGET_VERSION})
 MASTER_VERSION="$TARGET_VERSION"
 MASTER_NODE_NAME="$MASTER_NODE_NAME"
 TG_TOKEN="$TG_TOKEN"
+ALLOWED_CHAT_ID="$ALLOWED_CHAT_ID"
 DB_FILE="$DB_FILE"
 MASTER_DIR="$MASTER_DIR"
 IS_OFFICIAL_GATEWAY="$IS_OFFICIAL_GATEWAY"
@@ -174,6 +209,16 @@ EOF
     if [ "$UPGRADE_MODE" == "true" ]; then
         if ! grep -q "^IS_OFFICIAL_GATEWAY=" "${MASTER_DIR}/master.conf"; then
             echo "IS_OFFICIAL_GATEWAY=\"false\"" >> "${MASTER_DIR}/master.conf"
+        fi
+        if ! grep -q "^ALLOWED_CHAT_ID=" "${MASTER_DIR}/master.conf"; then
+            echo -e "\n\033[33m⚠️ [安全增强] 检测到中枢升级未配置管理者白名单 ALLOWED_CHAT_ID。\033[0m"
+            read -p "请输入您的管理者 Chat ID 以确立防线 (仅限数字): " RAW_CHAT_ID
+            ALLOWED_CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
+            while [ -z "$ALLOWED_CHAT_ID" ]; do
+                read -p "⚠️ Chat ID 不能为空，请重新输入: " RAW_CHAT_ID
+                ALLOWED_CHAT_ID=$(echo "$RAW_CHAT_ID" | tr -cd '0-9-')
+            done
+            echo "ALLOWED_CHAT_ID=\"$ALLOWED_CHAT_ID\"" >> "${MASTER_DIR}/master.conf"
         fi
         if ! grep -q "^ENABLE_MASTER_OTA=" "${MASTER_DIR}/master.conf"; then
             echo "ENABLE_MASTER_OTA=\"false\"" >> "${MASTER_DIR}/master.conf"
@@ -201,6 +246,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     enable_google TEXT DEFAULT 'true',
     enable_trust TEXT DEFAULT 'true',
     enable_ota TEXT DEFAULT 'false',
+    agent_token TEXT,
     PRIMARY KEY(chat_id, node_name)
 );
 
@@ -316,6 +362,23 @@ do_master_summary() {
     echo -e "\n========================================================"
     echo -e "⭐ \033[33m开源不易，如果 IP-Sentinel 极大简化了您的多节点管理，请赐予我们一枚星标！\033[0m"
     echo -e "💡 \033[32m您的每一颗 Star 都是我们持续迭代架构、开发 Web 视窗化控制台的动力源泉。\033[0m"
-    echo -e "👉 \033[36m\033[4m\033]8;;https://github.com/hotyue/IP-Sentinel\033\\点击此处直达 GitHub 仓库点亮 Star 🌟\033[0m\033]8;;\033\\"
+    echo -e "👉 \033[36m\033[4m\033]8;;https://github.com/Gitucc/IP-Sentinel\033\\点击此处直达 GitHub 仓库点亮 Star 🌟\033[0m\033]8;;\033\\"
     echo -e "========================================================\n"
 }
+
+# ==========================================================
+# 司令部中枢主执行流
+# ==========================================================
+SECURE_TMP=$(mktemp -d /tmp/ips_master.XXXXXX)
+trap 'rm -rf "$SECURE_TMP" 2>/dev/null' EXIT INT TERM
+
+REPO_RAW_URL=${REPO_RAW_URL:-"https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"}
+
+do_master_env_precheck
+do_fetch_master_version
+do_master_handle_menu
+do_master_clean_env
+do_master_config
+do_master_init_db
+do_master_deploy_core
+do_master_summary

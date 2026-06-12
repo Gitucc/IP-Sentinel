@@ -2,7 +2,7 @@
 
 # ==========================================================
 # 脚本名称: agent_daemon.sh
-# 核心功能: TLS 隧道构建、HMAC 动态鉴权、防重放攻击、模块级零信任路由
+# 核心功能: TLS 隧道构建、HMAC 动态鉴权、时间戳与 Nonce 防重放校验、模块级零信任路由
 # ==========================================================
 
 INSTALL_DIR="/opt/ip_sentinel"
@@ -12,7 +12,7 @@ IP_CACHE="${INSTALL_DIR}/core/.last_ip"
 [ ! -f "$CONFIG_FILE" ] && exit 1
 source "$CONFIG_FILE"
 
-# [战术核心] 若未配置司令部凭证，则判定为单机运行模式，主动进入休眠
+# [节点策略] 若未配置司令部凭证，则判定为单机运行模式，主动进入休眠
 [ -z "$TG_TOKEN" ] || [ -z "$CHAT_ID" ] && exit 0
 
 AGENT_PORT=${AGENT_PORT:-9527}
@@ -56,10 +56,10 @@ if [ -n "$AGENT_IP" ]; then
 fi
 
 # [v4.2.2 终极架构] 彻底剥离 Bash 对底层网络栈的干预，将控制权全权移交 Python 全域引擎
-echo "🌐 [Agent] 底层网络栈已解锁，准备切入全域双栈监听模式 (Dual-Stack Universal Bind)"
+echo "🌐 [Agent] 底层网络栈已解锁，准备切入双栈监听模式 (Dual-Stack Universal Bind)"
 
 # ==========================================================
-# [加密通信] 强制构建自签名 TLS 装甲，屏蔽中间人嗅探
+# [加密通信] 启用自签名 TLS 加密通信
 # ==========================================================
 CERT_FILE="${INSTALL_DIR}/core/cert.pem"
 KEY_FILE="${INSTALL_DIR}/core/key.pem"
@@ -71,7 +71,7 @@ if [ -f "$CERT_FILE" ]; then
         CERT_EPOCH=$(date -d "$CERT_DATE" +%s 2>/dev/null || echo 0)
         V422_EPOCH=$(date -d "2026-05-31" +%s 2>/dev/null || echo 1780185600)
         if [ "$CERT_EPOCH" -lt "$V422_EPOCH" ]; then
-            echo "🧹 [Agent] 侦测到旧版 (v4.2.2 前) 遗留 TLS 装甲，正在执行强制物理销毁..."
+            echo "🧹 [Agent] 侦测到旧版 (v4.2.2 前) 遗留 TLS 装甲，正在执行强制删除..."
             rm -f "$CERT_FILE" "$KEY_FILE"
         fi
     fi
@@ -101,10 +101,25 @@ import hmac
 import hashlib
 import time
 
+try:
+    import fcntl
+except ImportError:
+    import sys
+    from types import ModuleType
+    mock_fcntl = ModuleType('fcntl')
+    mock_fcntl.LOCK_EX = 1
+    mock_fcntl.LOCK_SH = 2
+    mock_fcntl.LOCK_NB = 4
+    mock_fcntl.LOCK_UN = 8
+    def flock(fd, operation):
+        pass
+    mock_fcntl.flock = flock
+    sys.modules['fcntl'] = mock_fcntl
+
 PORT = int(sys.argv[1])
 
 # ----------------------------------------------------------
-# [防御矩阵] Nonce 缓存池防重放攻击 (Replay Attack)
+# [防御矩阵] Nonce 缓存池时间戳与 Nonce 防重放校验 (Replay Attack)
 # ----------------------------------------------------------
 USED_SIGNS = {}
 def clean_used_signs():
@@ -114,66 +129,89 @@ def clean_used_signs():
     for s in expired:
         del USED_SIGNS[s]
 
-# [权限鉴权] 提取 CHAT_ID 作为 PSK 预共享密钥
-AUTH_TOKEN = ""
+# [通信凭证验证] 提取本地绑定的 AGENT_TOKEN 和 CHAT_ID
+local_agent_token = ""
+chat_id_token = ""
 if os.path.exists('/opt/ip_sentinel/config.conf'):
-    with open('/opt/ip_sentinel/config.conf', 'r') as f:
+    with open('/opt/ip_sentinel/config.conf', 'r', encoding='utf-8', errors='ignore') as f:
         for line in f:
             line = line.strip()
-            if line.startswith('CHAT_ID='):
-                AUTH_TOKEN = line.split('=', 1)[1].strip('"\'')
-                break
+            if line.startswith('AGENT_TOKEN='):
+                local_agent_token = line.split('=', 1)[1].strip('"\'')
+            elif line.startswith('CHAT_ID='):
+                chat_id_token = line.split('=', 1)[1].strip('"\'')
+
+# 通信凭证双重验证，如果凭证均未配置，则强制安全退出防止未授权访问
+if not local_agent_token and not chat_id_token:
+    print("Error: Comm credentials (AGENT_TOKEN and CHAT_ID) are missing. Agent exit.")
+    sys.exit(1)
+    
+AUTH_TOKEN = local_agent_token if local_agent_token else chat_id_token
 
 class AgentHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        import os
         # [权限校验] 路径解析与 HMAC-SHA256 动态签名核验
         parsed = urllib.parse.urlparse(self.path)
         req_path = parsed.path
         
-        if AUTH_TOKEN:
-            query = urllib.parse.parse_qs(parsed.query)
-            req_t = query.get('t', [''])[0]
-            req_sign = query.get('sign', [''])[0]
+        query = urllib.parse.parse_qs(parsed.query)
+        req_t = query.get('t', [''])[0]
+        req_sign = query.get('sign', [''])[0]
+        
+        if not req_t or not req_sign:
+            self.send_response(401)
+            self.end_headers()
+            self.wfile.write(b"401 Unauthorized: Missing Signature\n")
+            return
             
-            if not req_t or not req_sign:
+        try:
+            current_time = int(time.time())
+            # 校验时间戳防偏离 (±60秒窗口)
+            if abs(current_time - int(req_t)) > 60:
                 self.send_response(401)
                 self.end_headers()
-                self.wfile.write(b"401 Unauthorized: Missing Signature\n")
+                self.wfile.write(b"401 Unauthorized: Request Expired\n")
                 return
-                
-            try:
-                current_time = int(time.time())
-                # [防重放 1] 校验时间戳防偏离 (±60秒窗口，免疫隔夜抓包重放)
-                if abs(current_time - int(req_t)) > 60:
-                    self.send_response(401)
-                    self.end_headers()
-                    self.wfile.write(b"401 Unauthorized: Request Expired\n")
-                    return
-            except ValueError:
-                self.send_response(401)
-                self.end_headers()
-                return
+        except ValueError:
+            self.send_response(401)
+            self.end_headers()
+            return
+        
+        # 登记 Nonce 载荷，防御重放攻击
+        clean_used_signs()
+        if req_sign in USED_SIGNS:
+            self.send_response(401)
+            self.end_headers()
+            self.wfile.write(b"401 Unauthorized: Replay Attack Detected\n")
+            return
             
-            # [防重放 2] Nonce 精确核对 (拦截 60 秒内的 MITM 并发重放洗劫)
-            clean_used_signs()
-            if req_sign in USED_SIGNS:
-                self.send_response(401)
-                self.end_headers()
-                self.wfile.write(b"401 Unauthorized: Replay Attack Detected\n")
-                return
-                
-            # [身份核验] 数据完整性校验，使用 compare_digest 免疫时序探测攻击
+        # 收集所有参与哈希的参数并按字典序重排，防御参数篡改
+        sig_params = []
+        for key in sorted(query.keys()):
+            if key in ['sign', 't']:
+                continue
+            val = query[key][0]
+            sig_params.append(f"{key}={val}")
+            
+        sorted_query_str = "&".join(sig_params)
+        
+        # 组装待验签负载
+        if sorted_query_str:
+            msg = f"{req_path}:{sorted_query_str}:{req_t}".encode('utf-8')
+        else:
             msg = f"{req_path}:{req_t}".encode('utf-8')
-            expected_sign = hmac.new(AUTH_TOKEN.encode('utf-8'), msg, hashlib.sha256).hexdigest()
             
-            if not hmac.compare_digest(expected_sign, req_sign):
-                self.send_response(401)
-                self.end_headers()
-                self.wfile.write(b"401 Unauthorized: Signature Mismatch\n")
-                return
-            
-            # 鉴权通过，登记 Nonce 载荷
-            USED_SIGNS[req_sign] = current_time
+        expected_sign = hmac.new(AUTH_TOKEN.encode('utf-8'), msg, hashlib.sha256).hexdigest()
+        
+        if not hmac.compare_digest(expected_sign, req_sign):
+            self.send_response(401)
+            self.end_headers()
+            self.wfile.write(b"401 Unauthorized: Signature Mismatch\n")
+            return
+        
+        # 登记已使用的签名
+        USED_SIGNS[req_sign] = current_time
 
         # ==========================================================
         # [指令分发] 模块级业务路由矩阵 (精确匹配策略)
@@ -284,7 +322,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"Log transmission failed: {e}")
 
-        # 路由 5: 深海声呐模块触发
+        # 路由 5: 体检探针模块触发
         elif req_path == '/trigger_quality':
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
@@ -401,7 +439,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(f"500 Internal Error: {str(e)}\n".encode('utf-8'))
 
-        # 路由 8: 零信任 OTA 远程热更新链路
+        # 路由 8: 远程热更新机制
         elif req_path == '/trigger_ota':
             try:
                 config_mem = {}
@@ -428,6 +466,24 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(b"403 Forbidden: OTA strictly disabled under Public Gateway mode\n")
                     return
                     
+                # [前置校验] 提取并校验 repo_url 的合法性，防御参数注入漏洞
+                repo_url = "https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"
+                if os.path.exists('/opt/ip_sentinel/core/install.sh'):
+                    with open('/opt/ip_sentinel/core/install.sh', 'r') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith('REPO_RAW_URL='):
+                                repo_url = line.split('=', 1)[1].strip('"\' \r\n')
+                                break
+                
+                import re
+                if not re.match(r'^https://[a-zA-Z0-9\-\.\/_]+$', repo_url) or ';' in repo_url or '`' in repo_url:
+                    self.send_response(400)
+                    self.end_headers()
+                    self.wfile.write(b"400 Bad Request: Malicious Repository URL Detected\n")
+                    return
+                
+                # 校验完全通过，现在安全返回 200
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
@@ -436,14 +492,6 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 # [防线/容灾] 逃逸 Cgroup 隔离沙盒，并引入前置脚本语法校验防砖
                 import shutil
                 import base64
-                repo_url = "https://raw.githubusercontent.com/hotyue/IP-Sentinel/main"
-                if os.path.exists('/opt/ip_sentinel/core/install.sh'):
-                    with open('/opt/ip_sentinel/core/install.sh', 'r') as f:
-                        for line in f:
-                            if line.startswith('REPO_RAW_URL='):
-                                repo_url = line.split('=', 1)[1].strip('"\'')
-                                break
-                
                 err_msg = f"❌ **OTA 熔断告警**\n📍 节点: `{config_mem.get('NODE_ALIAS', '未知')}`\n⚠️ 原因: 脚本语法校验(bash -n)未通过，下载可能不完整。\n🚀 状态: 升级已取消，节点安全。"
                 err_msg_b64 = base64.b64encode(err_msg.encode('utf-8')).decode('utf-8')
                 
@@ -472,9 +520,12 @@ fi
                 os.system(full_cmd)
                 
             except Exception as e:
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(f"500 Internal Error: {str(e)}\n".encode('utf-8'))
+                try:
+                    self.send_response(500)
+                    self.end_headers()
+                    self.wfile.write(f"500 Internal Error: {str(e)}\n".encode('utf-8'))
+                except Exception:
+                    pass
 
         else:
             self.send_response(404)

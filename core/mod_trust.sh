@@ -2,13 +2,13 @@
 
 # ==========================================================
 # 脚本名称: mod_trust.sh
-# 核心功能: 动态扫描本地 LBS 冷数据，提取权威白名单，执行流量净化
+# 核心功能: 加载本地区域白名单，向权威网站发起模拟请求
 # ==========================================================
 
 INSTALL_DIR="/opt/ip_sentinel"
 CONFIG_FILE="${INSTALL_DIR}/config.conf"
 UA_FILE="${INSTALL_DIR}/data/user_agents.txt"
-REPO_RAW_URL="https://raw.githubusercontent.com/hotyue/IP-Sentinel/main"
+REPO_RAW_URL="https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"
 
 # --- [基础环境校验] ---
 [ ! -f "$CONFIG_FILE" ] && exit 1
@@ -18,9 +18,9 @@ REGION=${REGION_CODE:-"US"}
 LOG_FILE="${INSTALL_DIR}/logs/sentinel.log"
 
 # ==========================================================
-# 1. 动态获取配置 (拓扑自适应与兜底机制)
+# 1. 动态获取配置 (本地自适应解析与网络容灾)
 # ==========================================================
-# 利用 find 穿透多级子目录，自动抓取安装时落地的专属 json 文件
+# 利用 find 抓取安装时配置的专属 json 区域白名单 文件
 REGION_JSON_FILE=$(find "${INSTALL_DIR}/data/regions" -name "*.json" 2>/dev/null | head -n 1)
 
 # [容灾兜底] 如果本地 json 异常，回退拉取云端通用大区配置
@@ -57,14 +57,14 @@ log_msg() {
 }
 
 # ==========================================================
-# 2. 锁定单次会话指纹 (Hash-Seeded Persona)
+# 2. 生成节点专属的设备伪装指纹
 # ==========================================================
 if [ -f "$UA_FILE" ]; then
     mapfile -t UA_POOL < <(grep -v '^$' "$UA_FILE")
     TOTAL_UA=${#UA_POOL[@]}
     
     if [ "$TOTAL_UA" -gt 0 ]; then
-        # 优先使用固化的公网 IP 作为哈希种子，防范 NAT 节点指纹同质化特征
+        # 使用公网 IP 的哈希作为设备指纹池的随机种子
         SEED=$(echo -n "${PUBLIC_IP:-${BIND_IP:-127.0.0.1}}" | cksum | awk '{print $1}')
         
         # 构建当前节点的固定设备组映射
@@ -74,7 +74,7 @@ if [ -f "$UA_FILE" ]; then
         
         MY_UA_POOL=("${UA_POOL[$IDX1]}" "${UA_POOL[$IDX2]}" "${UA_POOL[$IDX3]}")
         
-        # 模拟真实的家庭多设备环境进行会话隔离
+        # 提取设备指纹以模拟真实流量
         CURRENT_UA=${MY_UA_POOL[$RANDOM % 3]}
     else
         CURRENT_UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -91,8 +91,8 @@ log_msg "INFO " "已载入 [${REGION}] 区域白名单，配置库条目: ${#TRU
 log_msg "INFO " "已锁定本地伪装指纹: $(echo $CURRENT_UA | cut -d' ' -f1-2)..."
 
 # -----------------------------------------------------------
-# [v4.1.6] Cookie 持久化身份库 (Trust 专属物理隔离)
-# 消除无记忆爬虫特征，积累顶级 CDN 的访客信誉分
+# [v4.1.6] 持久化本地 Cookie 以维持访问信誉
+# 保存访问 Cookie
 # -----------------------------------------------------------
 COOKIE_DIR="${INSTALL_DIR}/data/cookies"
 mkdir -p "$COOKIE_DIR"
@@ -176,7 +176,7 @@ for ((i=1; i<=STEP_COUNT; i++)); do
         fi
     fi
 
-    # [v4.1.6] 泊松长尾生物钟拉伸，模拟人类真实阅读扫视习惯
+    # [v4.1.6] 随机休眠，以模拟人类正常浏览行为
     if [ $i -lt $STEP_COUNT ]; then
         SLEEP_DICE=$((RANDOM % 100))
         if [ $SLEEP_DICE -lt 45 ]; then
@@ -197,9 +197,9 @@ done
 # 4. 结论判定与输出
 # ==========================================================
 if [ "$SUCCESS_INJECT" -ge $((STEP_COUNT / 2)) ]; then
-    log_msg "SCORE" "自检结论: ✅ 信用净化完成 (已成功注入 $SUCCESS_INJECT 条无害流量)"
+    log_msg "SCORE" "验证结果: ✅ 信用净化完成 (已成功注入 $SUCCESS_INJECT 条无害流量)"
 else
-    log_msg "SCORE" "自检结论: ❌ 净化受阻 (部分站点拦截或网络超时)"
+    log_msg "SCORE" "验证结果: ❌ 净化受阻 (部分站点拦截或网络超时)"
 fi
 
 log_msg "END  " "========== 会话结束，释放进程 =========="

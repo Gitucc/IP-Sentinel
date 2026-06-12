@@ -19,7 +19,7 @@ if [ -z "$TG_TOKEN" ] || [ -z "$CHAT_ID" ]; then
 fi
 
 # ==========================================================
-# [防线 1] 并发风暴熔断机制 (60s 冷却池)
+# [防线 1] 并发限流控制 (60秒冷却时间)
 # ==========================================================
 LOCK_FILE="${INSTALL_DIR}/core/.report_lock"
 if [ -f "$LOCK_FILE" ]; then
@@ -28,7 +28,7 @@ if [ -f "$LOCK_FILE" ]; then
     # 严格校验最后执行时间的合法性，防御密集回调
     if [[ "$LAST_RUN" =~ ^[0-9]+$ ]]; then
         if [ $((NOW - LAST_RUN)) -lt 60 ]; then
-            echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] [v${AGENT_VERSION:-未知}] [WARN ] [Report ] [SYSTEM] ⚠️ 战报请求过于频繁，触发 60 秒防并发风暴拦截。" >> "${INSTALL_DIR}/logs/sentinel.log"
+            echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] [v${AGENT_VERSION:-未知}] [WARN ] [Report ] [SYSTEM] ⚠️ 战报请求过于频繁，触发 60 秒防并发请求限流拦截。" >> "${INSTALL_DIR}/logs/sentinel.log"
             exit 0
         fi
     fi
@@ -36,7 +36,7 @@ fi
 echo $(date +%s) > "$LOCK_FILE"
 
 # ==========================================================
-# 1. 节点元数据与双轨身份解析
+# 1. 获取节点基础信息与别名
 # ==========================================================
 if [ -z "$NODE_NAME" ]; then
     IP_HASH=$(echo "${PUBLIC_IP:-127.0.0.1}" | md5sum | cut -c 1-4 | tr 'a-z' 'A-Z')
@@ -73,7 +73,7 @@ CURRENT_IP=$( (curl $CURL_BIND_OPT $DYNAMIC_IP_PREF -s -m 5 api.ip.sb/ip || curl
 [[ "$CURRENT_IP" == *":"* ]] && [[ "$CURRENT_IP" != *"["* ]] && CURRENT_IP="[${CURRENT_IP}]"
 
 # ----------------------------------------------------------
-# [容灾探针 2] 多级 ISP 情报探测链路
+# [容灾探针 2] 获取 ISP 网络服务商信息
 # ----------------------------------------------------------
 ISP_INFO=""
 
@@ -92,7 +92,7 @@ if [ -z "$ISP_INFO" ] || [[ "$ISP_INFO" == *"error"* ]]; then
     fi
 fi
 
-# 数据清洗过滤与类型渲染
+# 清洗并过滤 ISP 信息
 ISP_INFO=$(echo "$ISP_INFO" | sed -E 's/^AS[0-9]+ //')
 [ -z "$ISP_INFO" ] || [ "$ISP_INFO" == "null" ] && ISP_INFO="未知 ISP"
 
@@ -102,7 +102,7 @@ else
     IP_TYPE="$ISP_INFO 🏠"
 fi
 
-# [全视界旗帜引擎] 动态国旗渲染装配
+# [动态地区旗标匹配] 动态国旗渲染装配
 BASE_CC="${REGION_CODE%%-*}"
 case "$BASE_CC" in
     US) FLAG="🇺🇸" ;; JP) FLAG="🇯🇵" ;; HK) FLAG="🇭🇰" ;; TW) FLAG="🇹🇼" ;; SG) FLAG="🇸🇬" ;;
@@ -121,7 +121,7 @@ case "$BASE_CC" in
 esac
 
 # ==========================================================
-# 2. 行为日志萃取与快照分析
+# 2. 提取运行日志并分析状态
 # ==========================================================
 LOG_CONTENT=$(tail -n 1000 "$LOG_FILE" 2>/dev/null)
 
@@ -134,7 +134,7 @@ if [ -z "$LOG_CONTENT" ]; then
 🛠️ **建议**: 节点可能刚部署完毕，请在面板手动执行一次养护动作。
 EOT
 else
-    # 抓取末次执行模块的运行态势图
+    # 分析最后一次执行模块的检查结论
     LAST_LOG_LINE=$(echo "$LOG_CONTENT" | grep "\[SCORE\]" | tail -n 1)
     LAST_TIME=$(echo "$LAST_LOG_LINE" | awk '{print $1,$2}' | tr -d '[]')
     LAST_MOD=$(echo "$LAST_LOG_LINE" | awk '{print $4}' | tr -d '[]')
@@ -191,13 +191,13 @@ else
 fi
 
 # ==========================================================
-# 3. 云端版本探针与 OTA 调度模块
+# 3. 检查云端最新版本
 # ==========================================================
 LOCAL_VER="${AGENT_VERSION:-未知}"
 # [时间线对齐] 强制采用绝对 UTC 时间消除多节点的系统偏差
 REPORT_UTC_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
 
-REPO_RAW_URL="https://raw.githubusercontent.com/hotyue/IP-Sentinel/main"
+REPO_RAW_URL="https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"
 REMOTE_VER=$(curl -s -m 3 "${REPO_RAW_URL}/version.txt" | grep "^AGENT_VERSION=" | cut -d'=' -f2 | tr -d '[:space:]')
 
 MSG="$MSG
@@ -211,7 +211,7 @@ if [ -n "$REMOTE_VER" ]; then
         MSG="$MSG
 当前运行版本: \`v${LOCAL_VER}\`
 ✨ **发现新版本**: \`v${REMOTE_VER}\` (建议更新)
-💡 *系统提示：检测到新版引擎，建议通过中枢控制台执行 OTA 热更新！*"
+💡 *系统提示：检测到新版引擎，建议通过控制中枢执行 OTA 升级！*"
     else
         MSG="$MSG
 当前运行版本: \`v${LOCAL_VER}\` (✅已是最新)

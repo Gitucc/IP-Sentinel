@@ -2,7 +2,7 @@
 
 # ==========================================================
 # 脚本名称: install.sh
-# 核心功能: 动态环境解析、无感原子交接、防砖部署、沙盒隔离
+# 核心功能: 环境解析、无损热升级部署与环境隔离
 # ==========================================================
 
 # ==========================================================
@@ -19,7 +19,7 @@ SECURE_TMP=$(mktemp -d /tmp/ips_install.XXXXXX)
 trap 'rm -rf "$SECURE_TMP"' EXIT HUP INT QUIT TERM
 
 # ==========================================================
-# [环境侦测] 靶机架构预检与调度器降级决策
+# [环境侦测] 系统架构检测与自适应决策
 # ==========================================================
 is_systemd() {
     command -v systemctl >/dev/null 2>&1 || return 1
@@ -49,7 +49,7 @@ get_virt_info() {
 }
 
 echo -e "\n======================================"
-echo -e "📊 \033[36mIP-Sentinel 靶机环境侦测预检\033[0m"
+echo -e "📊 \033[36mIP-Sentinel 宿主系统环境侦测\033[0m"
 echo -e "--------------------------------------"
 echo -e "OS 架构   : $(get_os_info)"
 echo -e "虚拟化    : $(get_virt_info)"
@@ -61,11 +61,11 @@ fi
 echo -e "======================================\n"
 sleep 1
 
-REPO_RAW_URL="https://raw.githubusercontent.com/hotyue/IP-Sentinel/main"
+REPO_RAW_URL="https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"
 INSTALL_DIR="/opt/ip_sentinel"
 CONFIG_FILE="${INSTALL_DIR}/config.conf"
 
-# [网络容灾] 挂载双栈并利用防抖重试护甲，从远端解析运行态版本约束
+# [网络容灾] 挂载解析云端最新运行版本
 TARGET_VERSION=$( (curl -fsSL --connect-timeout 5 --retry 2 "${REPO_RAW_URL}/version.txt" || curl -4 -fsSL --connect-timeout 5 --retry 2 "${REPO_RAW_URL}/version.txt") 2>/dev/null | grep "^AGENT_VERSION=" | cut -d'=' -f2 | tr -d '[:space:]')
 TARGET_VERSION=${TARGET_VERSION:-"4.1.1"}
 
@@ -201,7 +201,7 @@ else
 fi
 
 # ==========================================================
-# [物理清洗] 安装前的环境纯净度构建与幽灵进程抹除
+# [清理环境] 安装前的环境纯净度构建与幽灵进程抹除
 # ==========================================================
 echo -e "\n⏳ 正在清理系统定时任务中的旧版条目..."
 
@@ -234,7 +234,7 @@ else
         rm -rf "${INSTALL_DIR}/core" "${INSTALL_DIR}/data" "${INSTALL_DIR}/config.conf" "${INSTALL_DIR}/.last_ip" 2>/dev/null
     fi
 fi
-echo -e "\033[32m✅ 环境清理完毕，幽灵进程已肃清！\033[0m"
+echo -e "\033[32m✅ 环境清理完毕，残留后台进程已清理！\033[0m"
 
 # ==========================================================
 # [交互装配] 从云端拓扑树中摘取节点信息并构建关联
@@ -525,7 +525,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
     fi
     
     if curl --interface "$RAW_TEST_IP" -sI -m 3 "$TEST_TARGET" >/dev/null 2>&1; then
-        echo -e " \033[32m✅ 原生直连，物理网卡死锁已激活。\033[0m"
+        echo -e " \033[32m✅ 原生直连，绑定到物理网卡。\033[0m"
         BIND_IP="$SAFE_PUBLIC_IP"
     else
         echo -e " \033[33m⚠️ 发现 NAT/虚拟路由架构，自动卸除网卡枷锁，交由内核路由。\033[0m"
@@ -566,6 +566,9 @@ if [ "$UPGRADE_MODE" == "false" ]; then
     LANG_PARAMS=$(jq -r '.google_module.lang_params' "$REGION_JSON_FILE")
     VALID_URL_SUFFIX=$(jq -r '.google_module.valid_url_suffix' "$REGION_JSON_FILE")
 
+    # 本地生成高熵唯一的专属通信 Token
+    AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
+
     cat > "$CONFIG_FILE" << EOF
 # IP-Sentinel 本地固化配置 (生成时间: $(date '+%Y-%m-%d %H:%M:%S'))
 AGENT_VERSION="$TARGET_VERSION"
@@ -596,6 +599,7 @@ NODE_NAME="$NODE_NAME"
 NODE_ALIAS="$NODE_ALIAS"
 
 ENABLE_OTA="$ENABLE_OTA"
+AGENT_TOKEN="$AGENT_TOKEN"
 EOF
 
     chmod 600 "$CONFIG_FILE"
@@ -698,10 +702,18 @@ if [ "$UPGRADE_MODE" == "true" ]; then
     else
         ENABLE_OTA=$(grep "^ENABLE_OTA=" "$CONFIG_FILE" | cut -d'"' -f2)
     fi
+
+    # 升级时自动补偿生成专属通信 Token
+    if ! grep -q "^AGENT_TOKEN=" "$CONFIG_FILE"; then
+        AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
+        echo "AGENT_TOKEN=\"$AGENT_TOKEN\"" >> "$CONFIG_FILE"
+    else
+        AGENT_TOKEN=$(grep "^AGENT_TOKEN=" "$CONFIG_FILE" | cut -d'"' -f2)
+    fi
 fi
 
 # ==========================================================
-# [原子交接] 防变砖双缓冲下载执行域
+# [原子交接] 防变砖临时更新目录
 # 必须保证核心模块物理就绪后，才允许向当前正在运行的旧引擎开火
 # ==========================================================
 echo -e "\n[6/7] 正在部署核心引擎与热数据..."
@@ -722,12 +734,12 @@ curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_quality.sh" 
 # 🛡️ 终极自检墙：一旦任意文件缺失或长度为零，直接熔断放弃覆写，确保宿主不宕机
 if [ ! -s "${TMP_CORE}/runner.sh" ] || [ ! -s "${TMP_CORE}/agent_daemon.sh" ]; then
     echo -e "\033[31m❌ 致命错误：核心代码拉取失败！网络阻断或 GitHub Raw 异常。\033[0m"
-    echo "🛡️ 防砖机制触发：已中止覆盖，旧版哨兵引擎仍安全存活中。"
+    echo "🛡️ 防砖升级熔断：已终止覆盖，旧版哨兵引擎仍安全存活中。"
     rm -rf "$TMP_CORE"
     exit 1
 fi
 
-echo "⏳ 新引擎校验通过，正在抹杀旧版守护进程..."
+echo "⏳ 新引擎校验通过，正在停止旧版守护进程..."
 if is_systemd; then
     systemctl kill --signal=SIGKILL ip-sentinel-agent-daemon.service >/dev/null 2>&1 || true
     systemctl stop ip-sentinel-runner.timer ip-sentinel-updater.timer ip-sentinel-report.timer ip-sentinel-agent-daemon.service >/dev/null 2>&1 || true
@@ -751,7 +763,7 @@ else
 fi
 
 # ==========================================================
-# [进程守护] Systemd 原生注入与微内核定时降级兜底
+# [进程守护] Systemd 原生注入与定时重试调度
 # ==========================================================
 echo -e "\n[7/7] 正在注入系统守护进程与调度器..."
 
@@ -969,7 +981,7 @@ EOF
 if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
     
     # 注册报文中塞入多宿主弹匣 SAFE_COMM_IP
-    REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}"
+    REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
     
     if [ "$UPGRADE_MODE" == "true" ]; then
         OLD_VERSION=$(grep "^AGENT_VERSION=" "$CONFIG_FILE" | cut -d'"' -f2)
@@ -991,7 +1003,7 @@ if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
             JSON_PAYLOAD=$(jq -n --arg cid "$CHAT_ID" --arg txt "$TEXT_MSG" --arg cb "manage:${NODE_NAME}" '{chat_id: $cid, text: $txt, parse_mode: "Markdown", reply_markup: {inline_keyboard: [[{text: "⚙️ 调出该节点控制台", callback_data: $cb}]]}}')
             curl -s -X POST "${TG_API_URL}" -H "Content-Type: application/json" -d "$JSON_PAYLOAD" >/dev/null 2>&1
             
-            echo -e "\033[32m✅ 升级通知已推送！请前往 TG 点击注册指令完成身份同步！\033[0m"
+            echo -e "\033[32m✅ 升级通知已推送！请前往 TG 转发注册指令完成激活！\033[0m"
             
         else
             echo -e "\n📡 [路由枢纽] 正在执行静默平滑升级 (v${OLD_VERSION} -> v${TARGET_VERSION})..."
@@ -1030,7 +1042,7 @@ if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
         PUSH_RESULT=$(curl -s -X POST "${TG_API_URL}" -H "Content-Type: application/json" -d "$JSON_PAYLOAD")
 
         if echo "$PUSH_RESULT" | grep -q '"ok":true'; then
-            echo -e "\033[32m✅ 注册信息已推送到您的 Telegram，请按指令完成最终激活！\033[0m"
+            echo -e "\033[32m✅ 注册信息已推送到您的 Telegram，请转发给 Bot 完成激活注册！\033[0m"
         else
             echo -e "\033[31m❌ 消息推送失败，请检查 Chat ID 是否正确或是否已关注机器人。\033[0m"
         fi
@@ -1094,5 +1106,5 @@ fi
 echo -e "\n========================================================"
 echo -e "⭐ \033[33m开源不易，如果 IP-Sentinel 提升了您的节点稳定性，请赐予我们一枚星标！\033[0m"
 echo -e "💡 \033[32m您的每一颗 Star 都是我们持续对抗风控、维护更新指纹库的核心动力。\033[0m"
-echo -e "👉 \033[36m\033[4m\033]8;;https://github.com/hotyue/IP-Sentinel\033\\点击此处直达 GitHub 仓库点亮 Star 🌟\033[0m\033]8;;\033\\"
+echo -e "👉 \033[36m\033[4m\033]8;;https://github.com/Gitucc/IP-Sentinel\033\\点击此处直达 GitHub 仓库点亮 Star 🌟\033[0m\033]8;;\033\\"
 echo -e "========================================================\n"

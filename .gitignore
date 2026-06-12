@@ -1,0 +1,12 @@
+# 临时文件与测试脚本
+scratch/
+*.txt
+*.db
+*.log
+.last_ip
+.tg_offset
+cert.pem
+key.pem
+
+# 排除尸检报告文档
+docs/
