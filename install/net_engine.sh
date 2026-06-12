@@ -46,6 +46,8 @@ do_network_probe() {
             [[ "$PUBLIC_IP" == *":"* ]] && IP_PREF="6" || IP_PREF="4"
         else
             echo "📍 发现可用出口 IP，请选择要注册与养护的锚点:"
+            echo -e "  \033[90m💡 提示：此 IP 将作为中枢 Bot 访问本节点 Webhook 的首选主通信地址。\033[0m"
+            echo -e "  \033[90m💡 系统已支持全栈 [::] 监听。若本机有双网卡，备用出口会自动编入后台 [容灾弹匣] 以防单路阻断。\033[0m"
             for i in "${!IP_OPTIONS[@]}"; do
                 num=$((i+1))
                 if [ "${IP_PROTO[$i]}" == "4" ]; then
