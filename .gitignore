@@ -1,4 +1,3 @@
-# 临时文件与测试脚本
 scratch/
 *.txt
 *.db
@@ -8,5 +7,4 @@ scratch/
 cert.pem
 key.pem
 
-# 排除尸检报告文档
 docs/
