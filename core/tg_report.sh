@@ -125,13 +125,23 @@ esac
 # ==========================================================
 LOG_CONTENT=$(tail -n 1000 "$LOG_FILE" 2>/dev/null)
 
+# 检测当前是否有正在运行的后台检测任务
+IS_RUNNING="false"
+if ! flock -n /tmp/ip_sentinel_runner.lock true 2>/dev/null; then
+    IS_RUNNING="true"
+fi
+
 if [ -z "$LOG_CONTENT" ]; then
+    local run_tip=""
+    if [ "$IS_RUNNING" == "true" ]; then
+        run_tip="%0A⏳ *检测到有维护任务正在后台执行，数据将在本轮结束后载入，请稍候...*"
+    fi
     read -r -d '' MSG <<EOT
 🛑 **[IP-Sentinel] 告警：节点异常**
 ----------------------------
 📍 **节点名称**: \`${NODE_ALIAS}\`
 ⚠️ **警告**: 过去 24 小时无运行日志！
-🛠️ **建议**: 节点可能刚部署完毕，请在面板手动执行一次养护动作。
+🛠️ **建议**: 节点可能刚部署完毕，请在面板手动执行一次养护动作。${run_tip}
 EOT
 else
     # 分析最后一次执行模块的检查结论
@@ -187,6 +197,12 @@ else
 🕒 **最近执行快照:  \`${LAST_MOD:-"System"} \`**
 时间: ${LAST_TIME:-"暂无数据"} (节点本地)
 结论: ${LAST_SCORE:-"暂无数据"}"
+
+    if [ "$IS_RUNNING" == "true" ]; then
+        MSG="$MSG
+
+⏳ **提示**: 节点当前有维护任务正在后台执行，本次数据将在本轮结束后自动更新。"
+    fi
 
 fi
 
