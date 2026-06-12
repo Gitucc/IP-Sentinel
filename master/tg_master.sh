@@ -417,7 +417,7 @@ while true; do
                     if [ -z "$NODE_DATA" ]; then
                         send_msg "$CHAT_ID" "⚠️ 您名下暂无在线节点。"
                     else
-                        send_msg "$CHAT_ID" "📢 **正在获取各在线节点简报...**%0A*(为防止触发 TG 官方限流，简报将排队依次送达，请耐心等待)*"
+                        send_msg "$CHAT_ID" "📢 **正在向各节点下发实时简报生成指令...**%0A*(为防止触发 Telegram 官方频控，简报将排队依次推送，请注意查收。)*"
                         echo "$NODE_DATA" | while IFS='|' read -r NNAME AIP APORT; do
                             dispatch_agent_request "$AIP" "$APORT" "/trigger_report" "" "$NNAME" > /dev/null &
                             sleep 2  
@@ -430,7 +430,7 @@ while true; do
                     if [ -z "$NODE_DATA" ]; then
                         send_msg "$CHAT_ID" "⚠️ 您名下暂无在线节点。"
                     else
-                        send_msg "$CHAT_ID" "📢 **正在唤醒所有节点执行系统维护...**"
+                        send_msg "$CHAT_ID" "📢 **正在唤醒全网节点执行巡逻与养护检测...**%0A*(任务已成功下发至节点后台异步执行，预计 30 秒内完成，数据落库后即可查阅最新战报。)*"
                         echo "$NODE_DATA" | while IFS='|' read -r NNAME AIP APORT; do
                             dispatch_agent_request "$AIP" "$APORT" "/trigger_run" "" "$NNAME" > /dev/null &
                             sleep 0.2  
