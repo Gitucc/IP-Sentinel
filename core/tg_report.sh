@@ -132,7 +132,7 @@ if ! flock -n /tmp/ip_sentinel_runner.lock true 2>/dev/null; then
 fi
 
 if [ -z "$LOG_CONTENT" ]; then
-    local run_tip=""
+    run_tip=""
     if [ "$IS_RUNNING" == "true" ]; then
         run_tip="%0A⏳ *状态: 维护任务正在后台执行中，最新数据将在本轮结束后载入，请稍候...*"
     else

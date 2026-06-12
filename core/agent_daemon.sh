@@ -285,7 +285,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 log_data = "日志文件不存在或为空"
                 log_path = '/opt/ip_sentinel/logs/sentinel.log'
                 if os.path.exists(log_path):
-                    with open(log_path, 'r', errors='ignore') as f:
+                    with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
                         lines = f.readlines()
                         if lines:
                             log_data = html.escape("".join(lines[-15:]))
