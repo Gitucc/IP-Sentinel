@@ -500,17 +500,17 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 
                 # 将升级逻辑进行 Base64 深层封装，免疫 Popen 或 Systemd 传递带来的指令注入风险
                 ota_script = f"""
-echo "=== [\\$(date '+%Y-%m-%d %H:%M:%S')] OTA 升级指令已接收，开始拉取安装包 ===" > /opt/ip_sentinel/logs/ota_upgrade.log
+echo "=== [$(date '+%Y-%m-%d %H:%M:%S')] OTA 升级指令已接收，开始拉取安装包 ===" > /opt/ip_sentinel/logs/ota_upgrade.log
 export SILENT_OTA="true"
 curl -fsSL {repo_url}/core/install.sh -o /tmp/ota_agent.sh >> /opt/ip_sentinel/logs/ota_upgrade.log 2>&1
 if bash -n /tmp/ota_agent.sh; then
-    echo "=== [\\$(date '+%Y-%m-%d %H:%M:%S')] 安装包语法校验通过，开始执行安装 ===" >> /opt/ip_sentinel/logs/ota_upgrade.log
+    echo "=== [$(date '+%Y-%m-%d %H:%M:%S')] 安装包语法校验通过，开始执行安装 ===" >> /opt/ip_sentinel/logs/ota_upgrade.log
     bash /tmp/ota_agent.sh >> /opt/ip_sentinel/logs/ota_upgrade.log 2>&1
-    echo "=== [\\$(date '+%Y-%m-%d %H:%M:%S')] OTA 升级流程执行完毕 ===" >> /opt/ip_sentinel/logs/ota_upgrade.log
+    echo "=== [$(date '+%Y-%m-%d %H:%M:%S')] OTA 升级流程执行完毕 ===" >> /opt/ip_sentinel/logs/ota_upgrade.log
 else
-    MSG=\\$(echo '{err_msg_b64}' | base64 -d)
-    curl -s -m 10 -X POST "{tg_url}" -d "chat_id={chat_id}" -d "text=\\$MSG" -d "parse_mode=Markdown" > /dev/null 2>&1
-    echo "=== [\\$(date '+%Y-%m-%d %H:%M:%S')] 错误: OTA 安装包语法校验失败，可能下载受损 ===" >> /opt/ip_sentinel/logs/ota_upgrade.log
+    MSG=$(echo '{err_msg_b64}' | base64 -d)
+    curl -s -m 10 -X POST "{tg_url}" -d "chat_id={chat_id}" -d "text=$MSG" -d "parse_mode=Markdown" > /dev/null 2>&1
+    echo "=== [$(date '+%Y-%m-%d %H:%M:%S')] 错误: OTA 安装包语法校验失败，可能下载受损 ===" >> /opt/ip_sentinel/logs/ota_upgrade.log
 fi
 """
                 ota_script_b64 = base64.b64encode(ota_script.encode('utf-8')).decode('utf-8')

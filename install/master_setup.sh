@@ -23,7 +23,7 @@ process_backspaces() {
     done
     local ansi_pattern=$'\x1b''\[[0-9;]*[a-zA-Z~]'
     while [[ "$output" =~ $ansi_pattern ]]; do
-        output="${output//${BASH_REMATCH[0]}/}"
+        output="${output//"${BASH_REMATCH[0]}"/}"
     done
     echo "$output"
 }

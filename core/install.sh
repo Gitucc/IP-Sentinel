@@ -24,7 +24,7 @@ process_backspaces() {
     done
     local ansi_pattern=$'\x1b''\[[0-9;]*[a-zA-Z~]'
     while [[ "$output" =~ $ansi_pattern ]]; do
-        output="${output//${BASH_REMATCH[0]}/}"
+        output="${output//"${BASH_REMATCH[0]}"/}"
     done
     echo "$output"
 }
@@ -1081,10 +1081,10 @@ EOF
 # ----------------------------------------------------------
 # [通讯指控] 部署后首播，打入中枢通信网关及指令态势传递
 # ----------------------------------------------------------
+# 提前固化注册报文，确保即使节点端不配置 TG_TOKEN，也能在终端打印出最新的同步报文以供中枢登记
+REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
+
 if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
-    
-    # 注册报文中塞入多宿主弹匣 SAFE_COMM_IP
-    REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
     
     if [ "$UPGRADE_MODE" == "true" ]; then
         OLD_VERSION=$(grep "^AGENT_VERSION=" "$CONFIG_FILE" | cut -d'"' -f2)
@@ -1198,8 +1198,8 @@ fi
 echo "🗑️ 若未来需卸载，可重新运行本脚本选择[2]或执行: bash ${INSTALL_DIR}/core/uninstall.sh"
 echo "========================================================"
 
-if [[ -n "$TG_TOKEN" ]]; then
-    echo -e "\n💡 \033[36m若中枢提示 [鉴权失败]，请在 TG 机器人中发送以下最新的注册报文完成同步：\033[0m"
+if [[ -n "$AGENT_TOKEN" ]]; then
+    echo -e "\n💡 \033[36m若中枢提示 [鉴权失败] 或进行初次同步，请在 TG 机器人中发送以下最新的注册报文完成同步：\033[0m"
     echo -e "\033[32m${REG_MSG}\033[0m\n"
 fi
 
