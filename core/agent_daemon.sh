@@ -275,7 +275,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
             try:
                 config = {}
                 if os.path.exists('/opt/ip_sentinel/config.conf'):
-                    with open('/opt/ip_sentinel/config.conf', 'r') as f:
+                    with open('/opt/ip_sentinel/config.conf', 'r', encoding='utf-8', errors='ignore') as f:
                         for line in f:
                             line = line.strip()
                             if '=' in line and not line.startswith('#'):
