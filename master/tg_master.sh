@@ -458,9 +458,11 @@ while true; do
                             RESPONSE=$(dispatch_agent_request "$AGENT_IP" "$AGENT_PORT" "/trigger_quality" "" "$TARGET_NODE")
                             
                             if [ "$RESPONSE" == "FAILED" ]; then
-                                send_msg "$CHAT_ID" "❌ 指令下发超时或失败！请检查节点公网 IP 或防火墙端口 ($AGENT_PORT) 是否放行。"
+                                send_msg "$CHAT_ID" "❌ 指令下发超时或失败！请检查节点公网 IP 或防火墙端口 ($AGENT_PORT) 是否放行."
                             elif [[ "$RESPONSE" == *"403"* ]]; then
                                 send_msg "$CHAT_ID" "⚠️ **拒绝执行**：该节点未在本地开启此模块，请检查安装时的配置！"
+                            elif [[ "$RESPONSE" == *"401"* ]]; then
+                                send_msg "$CHAT_ID" "🚨 **鉴权失败**：中枢与节点的通信凭证 (Token) 不匹配，指令已被节点强行熔断！%0A%0A💡 *请在节点重新运行安装脚本，将生成的最新 \`#REGISTER#\` 注册指令发送给 Bot 进行同步！*"
                             else
                                 send_msg "$CHAT_ID" "✅ 节点 \`$TARGET_NODE\` 回应: 🔍 体检探针已投放！请等待战报回传。"
                             fi
@@ -642,6 +644,8 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                             
                             TEXT_MSG="⚙️ **目标锁定**: \`$TARGET_ALIAS\`\n(底层标识: \`$TARGET_NODE\`)\n🌐 IP 坐标: \`$A_IP\`\n🕒 最后通讯: \`$LAST_SEEN\`\n\n✅ **执行成功**: 模块 [$MOD_NAME] 状态已切换为 $TARGET_STATE！"
                             edit_ui "$CHAT_ID" "$callback_message_id" "$TEXT_MSG" "$BTNS"
+                        elif [[ "$RESPONSE" == *"401"* ]]; then
+                            send_msg "$CHAT_ID" "🚨 **鉴权失败**：中枢与节点的通信凭证 (Token) 不匹配，指令已被节点强行熔断！%0A%0A💡 *请在节点重新运行安装脚本，将生成的最新 \`#REGISTER#\` 注册指令发送给 Bot 进行同步！*"
                         else
                             send_msg "$CHAT_ID" "❌ 指令下发失败，安全策略禁止降级重试。"
                         fi
@@ -730,6 +734,8 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                         
                         if [ "$RESPONSE" == "FAILED" ]; then
                             send_msg "$CHAT_ID" "❌ 指令下发超时！为防范劫持风险，已终止请求。"
+                        elif [[ "$RESPONSE" == *"401"* ]]; then
+                            send_msg "$CHAT_ID" "🚨 **鉴权失败**：中枢与节点的通信凭证 (Token) 不匹配，指令已被节点强行熔断！%0A%0A💡 *请在节点重新运行安装脚本，将生成的最新 \`#REGISTER#\` 注册指令发送给 Bot 进行同步！*"
                         elif [[ "$RESPONSE" == *"Action Accepted"* ]]; then
                             execute_sqlite_query "UPDATE nodes SET node_alias='$NEW_ALIAS' WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE';"
                             send_msg "$CHAT_ID" "✅ 通讯成功！节点别名已下发: \`$NEW_ALIAS\`%0A*(中枢档案已自动刷新，雷达面板已同步)*"
@@ -769,6 +775,8 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                             TEXT_RES="❌ OTA 指令下发彻底失败！链路异常或严禁使用 HTTP 降级通讯。"
                         elif [[ "$RESPONSE" == *"403"* ]]; then
                             TEXT_RES="⚠️ **节点拒绝执行**：该节点本地未开启 OTA 权限或运行在官方网关下！"
+                        elif [[ "$RESPONSE" == *"401"* ]]; then
+                            TEXT_RES="🚨 **鉴权失败**：中枢与节点的通信凭证 (Token) 不匹配，指令已被节点强行熔断！%0A%0A💡 *请在节点重新运行安装脚本，将生成的最新 \`#REGISTER#\` 注册指令发送给 Bot 进行同步！*"
                         else
                             TEXT_RES="✅ OTA (TLS加密) 触发成功！节点正在后台执行拉取重构..."
                         fi
@@ -806,6 +814,8 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                             TEXT_RES="❌ 指令下发超时或失败！为保护链路安全，已终止通信 (严禁降级为 HTTP)。"
                         elif [[ "$RESPONSE" == *"403"* ]]; then
                             TEXT_RES="⚠️ **拒绝执行**：该节点未在本地开启此模块，请检查安装时的配置！"
+                        elif [[ "$RESPONSE" == *"401"* ]]; then
+                            TEXT_RES="🚨 **鉴权失败**：中枢与节点的通信凭证 (Token) 不匹配，指令已被节点强行熔断！%0A%0A💡 *请在节点重新运行安装脚本，将生成的最新 \`#REGISTER#\` 注册指令发送给 Bot 进行同步！*"
                         else
                              if [ "$ACTION_TYPE" == "google" ]; then 
                                 TEXT_RES="✅ 节点 \`$TARGET_NODE\` 回应: 📍 Google 纠偏程序启动。"
