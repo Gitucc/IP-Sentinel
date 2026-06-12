@@ -802,11 +802,16 @@ if [ "$UPGRADE_MODE" == "true" ]; then
     fi
 
     # 升级时自动补偿生成专属通信 Token
-    if ! grep -q "^AGENT_TOKEN=" "$CONFIG_FILE"; then
+    local_token=""
+    if grep -q "^AGENT_TOKEN=" "$CONFIG_FILE"; then
+        local_token=$(grep "^AGENT_TOKEN=" "$CONFIG_FILE" | cut -d'"' -f2 | tr -d '[:space:]')
+    fi
+    if [ -z "$local_token" ]; then
         AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
+        sed -i '/^AGENT_TOKEN=/d' "$CONFIG_FILE" 2>/dev/null
         echo "AGENT_TOKEN=\"$AGENT_TOKEN\"" >> "$CONFIG_FILE"
     else
-        AGENT_TOKEN=$(grep "^AGENT_TOKEN=" "$CONFIG_FILE" | cut -d'"' -f2)
+        AGENT_TOKEN="$local_token"
     fi
 fi
 
@@ -1109,7 +1114,10 @@ if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
 📍 节点：\`${NODE_ALIAS}\`
 🌐 养护 IP：\`${SAFE_PUBLIC_IP}\`
 📡 容灾 IP：\`${SAFE_COMM_IP}\`
-🚀 状态：v${TARGET_VERSION} OTA 动态活体引擎已部署"
+🚀 状态：v${TARGET_VERSION} OTA 动态活体引擎已部署
+
+💡 *若中枢提示 [鉴权失败]，请点击复制并发送以下指令进行凭证同步：*
+\`${REG_MSG}\`"
 
             JSON_PAYLOAD=$(jq -n --arg cid "$CHAT_ID" --arg txt "$TEXT_MSG" --arg cb "manage:${NODE_NAME}" '{chat_id: $cid, text: $txt, parse_mode: "Markdown", reply_markup: {inline_keyboard: [[{text: "⚙️ 调出该节点控制台", callback_data: $cb}]]}}')
             curl -s -X POST "${TG_API_URL}" -H "Content-Type: application/json" -d "$JSON_PAYLOAD" >/dev/null 2>&1
@@ -1189,6 +1197,11 @@ if [[ -n "$TG_TOKEN" ]]; then
 fi
 echo "🗑️ 若未来需卸载，可重新运行本脚本选择[2]或执行: bash ${INSTALL_DIR}/core/uninstall.sh"
 echo "========================================================"
+
+if [[ -n "$TG_TOKEN" ]]; then
+    echo -e "\n💡 \033[36m若中枢提示 [鉴权失败]，请在 TG 机器人中发送以下最新的注册报文完成同步：\033[0m"
+    echo -e "\033[32m${REG_MSG}\033[0m\n"
+fi
 
 if [ "$UPGRADE_MODE" == "false" ]; then
     echo -e "\n📡 正在向开源社区汇报装机量 (完全匿名，不收集IP)..."
