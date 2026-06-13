@@ -1,6 +1,6 @@
-// IP-Sentinel Telemetry API
+// IP-Sentinel Anonymous Telemetry API
 // 部署环境: Cloudflare Workers + KV
-// 隐私声明: 不采集、不存储用户的 IP 地址、Header、Token 及系统特征参数，仅用于统计。
+// 隐私声明: 本系统仅执行原子累加计数。完全匿名统计，不采集、不存储用户的 IP 地址、请求头、Token 或任何系统特征参数。
 
 export default {
   async fetch(request, env) {
@@ -61,7 +61,7 @@ export default {
         });
       }
 
-      return new Response("IP-Sentinel Telemetry API (No IP Logged, Transparent)", { status: 200 });
+      return new Response("IP-Sentinel Anonymous Telemetry API (No IP Logged, Transparent)", { status: 200 });
     } catch (err) {
       return new Response("Error", { status: 500 });
     }

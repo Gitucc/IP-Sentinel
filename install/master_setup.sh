@@ -442,10 +442,16 @@ do_master_summary() {
     fi
     echo "========================================================"
 
-    if [ "$UPGRADE_MODE" == "false" ]; then
-        echo -e "\n📡 正在向开源社区汇报装机量 (完全匿名，不收集IP)..."
-        MASTER_COUNT=$(curl -s -m 3 "https://ip-sentinel-count.samanthaestime296.workers.dev/ping/master" || echo "")
+    echo -e "\n📡 正在向开源社区汇报装机量 (完全匿名，不收集IP)..."
+    MASTER_COUNT=$(curl -s -m 3 "https://ip-sentinel-count.samanthaestime296.workers.dev/ping/master" || echo "")
 
+    if [ "$UPGRADE_MODE" == "true" ]; then
+        if [ -n "$MASTER_COUNT" ] && [[ "$MASTER_COUNT" =~ ^[0-9]+$ ]]; then
+            echo -e "\033[32m✅ 感谢您持续作为 IP-Sentinel 中枢管理者 (当前统计序号: ${MASTER_COUNT})！\033[0m"
+        else
+            echo -e "\033[32m✅ 感谢您更新 IP-Sentinel 控制中枢！\033[0m"
+        fi
+    else
         if [ -n "$MASTER_COUNT" ] && [[ "$MASTER_COUNT" =~ ^[0-9]+$ ]]; then
             echo -e "\033[32m✅ 感谢您成为全球第 ${MASTER_COUNT} 名 IP-Sentinel 中枢管理者！\033[0m"
         else

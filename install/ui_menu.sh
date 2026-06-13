@@ -375,10 +375,16 @@ do_show_summary() {
         echo -e "\033[32m${REG_MSG}\033[0m\n"
     fi
 
-    if [ "$UPGRADE_MODE" == "false" ]; then
-        echo -e "\n📡 正在向开源社区汇报装机量 (完全匿名，不收集IP)..."
-        AGENT_COUNT=$(curl -s -m 3 "https://ip-sentinel-count.samanthaestime296.workers.dev/ping/agent" || echo "")
+    echo -e "\n📡 正在向开源社区汇报装机量 (完全匿名，不收集IP)..."
+    AGENT_COUNT=$(curl -s -m 3 "https://ip-sentinel-count.samanthaestime296.workers.dev/ping/agent" || echo "")
 
+    if [ "$UPGRADE_MODE" == "true" ]; then
+        if [ -n "$AGENT_COUNT" ] && [[ "$AGENT_COUNT" =~ ^[0-9]+$ ]]; then
+            echo -e "\033[32m✅ 感谢您持续作为 IP-Sentinel 节点维护者 (当前统计序号: ${AGENT_COUNT})！\033[0m"
+        else
+            echo -e "\033[32m✅ 感谢您更新 IP-Sentinel！\033[0m"
+        fi
+    else
         if [ -n "$AGENT_COUNT" ] && [[ "$AGENT_COUNT" =~ ^[0-9]+$ ]]; then
             echo -e "\033[32m✅ 感谢您成为全球第 ${AGENT_COUNT} 名 IP-Sentinel 节点维护者！\033[0m"
         else
