@@ -250,10 +250,10 @@ do_interactive_setup() {
 }
 
 do_final_report() {
+    # 注册报文中塞入多宿主弹匣与专属安全 Token
+    REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
+    
     if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
-        
-        # 注册报文中塞入多宿主弹匣 SAFE_COMM_IP
-        REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}"
         
         if [ "$UPGRADE_MODE" == "true" ]; then
             OLD_VERSION=$(grep "^AGENT_VERSION=" "$CONFIG_FILE" | cut -d'"' -f2)
@@ -282,7 +282,10 @@ do_final_report() {
 📍 节点：\`${NODE_ALIAS}\`
 🌐 养护 IP：\`${SAFE_PUBLIC_IP}\`
 📡 容灾 IP：\`${SAFE_COMM_IP}\`
-🚀 状态：v${TARGET_VERSION} OTA 动态活体引擎已部署"
+🚀 状态：v${TARGET_VERSION} OTA 动态活体引擎已部署
+
+💡 *若中枢提示 [鉴权失败]，请点击复制并发送以下指令进行凭证同步：*
+\`${REG_MSG}\`"
 
                 JSON_PAYLOAD=$(jq -n --arg cid "$CHAT_ID" --arg txt "$TEXT_MSG" --arg cb "manage:${NODE_NAME}" '{chat_id: $cid, text: $txt, parse_mode: "Markdown", reply_markup: {inline_keyboard: [[{text: "⚙️ 调出该节点控制台", callback_data: $cb}]]}}')
                 curl -s -X POST "${TG_API_URL}" -H "Content-Type: application/json" -d "$JSON_PAYLOAD" >/dev/null 2>&1
@@ -369,6 +372,14 @@ do_show_summary() {
     fi
     echo "🗑️ 若未来需卸载，可重新运行本脚本选择[2]或执行: bash ${INSTALL_DIR}/core/uninstall.sh"
     echo "========================================================"
+
+    # 提前固化注册报文，确保即使节点端不配置 TG_TOKEN，也能在终端打印出最新的同步报文以供中枢登记
+    REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
+
+    if [[ -n "$AGENT_TOKEN" ]]; then
+        echo -e "\n💡 \033[36m若中枢提示 [鉴权失败] 或进行初次同步，请在 TG 机器人中发送以下最新的注册报文完成同步：\033[0m"
+        echo -e "\033[32m${REG_MSG}\033[0m\n"
+    fi
 
     if [ "$UPGRADE_MODE" == "false" ]; then
         echo -e "\n📡 正在向开源社区汇报装机量 (完全匿名，不收集IP)..."

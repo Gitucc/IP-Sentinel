@@ -184,7 +184,7 @@ fi
 echo -e "======================================\n"
 sleep 1
 
-REPO_RAW_URL="https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"
+REPO_RAW_URL=${REPO_RAW_URL:-"https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"}
 INSTALL_DIR="/opt/ip_sentinel"
 CONFIG_FILE="${INSTALL_DIR}/config.conf"
 
