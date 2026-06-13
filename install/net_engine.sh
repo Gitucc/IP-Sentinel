@@ -160,6 +160,9 @@ do_write_config() {
         LANG_PARAMS=$(jq -r '.google_module.lang_params' "$REGION_JSON_FILE")
         VALID_URL_SUFFIX=$(jq -r '.google_module.valid_url_suffix' "$REGION_JSON_FILE")
 
+        # 本地生成高熵唯一的专属通信 Token
+        AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
+
         cat > "$CONFIG_FILE" << EOF
 # IP-Sentinel 本地固化配置 (生成时间: $(date '+%Y-%m-%d %H:%M:%S'))
 AGENT_VERSION="$TARGET_VERSION"
@@ -190,6 +193,7 @@ NODE_NAME="$NODE_NAME"
 NODE_ALIAS="$NODE_ALIAS"
 
 ENABLE_OTA="$ENABLE_OTA"
+AGENT_TOKEN="$AGENT_TOKEN"
 EOF
 
         chmod 600 "$CONFIG_FILE"
@@ -289,6 +293,19 @@ do_smooth_migrate() {
             ENABLE_OTA="false"
         else
             ENABLE_OTA=$(grep "^ENABLE_OTA=" "$CONFIG_FILE" | cut -d'"' -f2)
+        fi
+
+        # 升级时自动补偿生成专属通信 Token
+        local_token=""
+        if grep -q "^AGENT_TOKEN=" "$CONFIG_FILE"; then
+            local_token=$(grep "^AGENT_TOKEN=" "$CONFIG_FILE" | cut -d'"' -f2 | tr -d '[:space:]')
+        fi
+        if [ -z "$local_token" ]; then
+            AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
+            sed -i '/^AGENT_TOKEN=/d' "$CONFIG_FILE" 2>/dev/null
+            echo "AGENT_TOKEN=\"$AGENT_TOKEN\"" >> "$CONFIG_FILE"
+        else
+            AGENT_TOKEN="$local_token"
         fi
     fi
 }
