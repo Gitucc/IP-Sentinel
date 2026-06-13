@@ -1,36 +1,26 @@
 #!/bin/bash
 
-# ==========================================================
-# 脚本名称: mod_trust.sh
-# 核心功能: 加载本地区域白名单，向权威网站发起模拟请求
-# ==========================================================
-
 INSTALL_DIR="/opt/ip_sentinel"
 CONFIG_FILE="${INSTALL_DIR}/config.conf"
 UA_FILE="${INSTALL_DIR}/data/user_agents.txt"
 REPO_RAW_URL="https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"
 
-# --- [基础环境校验] ---
 [ ! -f "$CONFIG_FILE" ] && exit 1
 source "$CONFIG_FILE"
 
 REGION=${REGION_CODE:-"US"}
 LOG_FILE="${INSTALL_DIR}/logs/sentinel.log"
 
-# ==========================================================
-# 1. 动态获取配置 (本地自适应解析与网络容灾)
-# ==========================================================
-# 利用 find 抓取安装时配置的专属 json 区域白名单 文件
+# 查找专属 json 区域白名单文件
 REGION_JSON_FILE=$(find "${INSTALL_DIR}/data/regions" -name "*.json" 2>/dev/null | head -n 1)
 
-# [容灾兜底] 如果本地 json 异常，回退拉取云端通用大区配置
+# 若本地 json 异常，回退拉取云端通用大区配置
 if [ -z "$REGION_JSON_FILE" ] || [ ! -f "$REGION_JSON_FILE" ]; then
     REGION_JSON_FILE="${INSTALL_DIR}/data/regions/${REGION}.json"
     mkdir -p "${INSTALL_DIR}/data/regions"
     curl -${IP_PREF:-4} -sL "${REPO_RAW_URL}/data/regions/${REGION}.json" -o "$REGION_JSON_FILE"
 fi
 
-# 解析安全网址数组
 if [ -f "$REGION_JSON_FILE" ]; then
     if command -v jq >/dev/null 2>&1; then
         mapfile -t TRUST_URLS < <(jq -r '.trust_module.white_urls[]' "$REGION_JSON_FILE" 2>/dev/null)
@@ -40,12 +30,10 @@ if [ -f "$REGION_JSON_FILE" ]; then
     fi
 fi
 
-# [极限容灾] 提供国际通用无害白名单防全盘崩溃
 if [ ${#TRUST_URLS[@]} -eq 0 ]; then
     TRUST_URLS=("https://en.wikipedia.org/wiki/Special:Random" "https://www.apple.com/" "https://www.microsoft.com/")
 fi
 
-# --- [日志规范化组件] ---
 log_msg() {
     local TYPE=$1
     local MSG=$2
@@ -56,26 +44,20 @@ log_msg() {
         "$TIME" "$local_ver" "$TYPE" "$REGION" "$MSG" | tee -a "$LOG_FILE"
 }
 
-# ==========================================================
-# 2. 生成节点专属的设备伪装指纹
-# ==========================================================
 if [ -f "$UA_FILE" ]; then
     mapfile -t UA_POOL < <(grep -v '^$' "$UA_FILE")
     TOTAL_UA=${#UA_POOL[@]}
     
     if [ "$TOTAL_UA" -gt 0 ]; then
-        # 使用公网 IP 的哈希作为设备指纹池的随机种子
-        SEED=$(echo -n "${PUBLIC_IP:-${BIND_IP:-127.0.0.1}}" | cksum | awk '{print $1}')
+            SEED=$(echo -n "${PUBLIC_IP:-${BIND_IP:-127.0.0.1}}" | cksum | awk '{print $1}')
         
-        # 构建当前节点的固定设备组映射
-        IDX1=$(( SEED % TOTAL_UA ))
+            IDX1=$(( SEED % TOTAL_UA ))
         IDX2=$(( (SEED * 17) % TOTAL_UA ))
         IDX3=$(( (SEED * 31) % TOTAL_UA ))
         
         MY_UA_POOL=("${UA_POOL[$IDX1]}" "${UA_POOL[$IDX2]}" "${UA_POOL[$IDX3]}")
         
-        # 提取设备指纹以模拟真实流量
-        CURRENT_UA=${MY_UA_POOL[$RANDOM % 3]}
+            CURRENT_UA=${MY_UA_POOL[$RANDOM % 3]}
     else
         CURRENT_UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     fi
@@ -83,24 +65,16 @@ else
     CURRENT_UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 fi
 
-# ==========================================================
-# 3. 执行流量净化行动
-# ==========================================================
 log_msg "START" "========== 启动区域 IP 信用净化会话 =========="
 log_msg "INFO " "已载入 [${REGION}] 区域白名单，配置库条目: ${#TRUST_URLS[@]} 个"
 log_msg "INFO " "已锁定本地伪装指纹: $(echo $CURRENT_UA | cut -d' ' -f1-2)..."
 
-# -----------------------------------------------------------
-# [v4.1.6] 持久化本地 Cookie 以维持访问信誉
-# 保存访问 Cookie
-# -----------------------------------------------------------
 COOKIE_DIR="${INSTALL_DIR}/data/cookies"
 mkdir -p "$COOKIE_DIR"
 
 NODE_HASH=$(echo -n "${PUBLIC_IP:-127.0.0.1}" | cksum | awk '{print $1}')
 COOKIE_FILE="${COOKIE_DIR}/trust_${NODE_HASH}.txt"
 
-# [互斥锁] 防止并发净化导致 Cookie 文件读写冲突
 LOCK_FILE="${COOKIE_FILE}.lock"
 exec 200>"$LOCK_FILE"
 flock -n 200 || {
@@ -108,20 +82,16 @@ flock -n 200 || {
     exit 0
 }
 
-# 定期清理废弃 Cookie，防爆栈
+# 定期清理废弃 Cookie
 find "$COOKIE_DIR" -type f -name "trust_*.txt" -mtime +14 -delete 2>/dev/null || true
 
-# ----------------------------------------------------------
-# 网络锚定与协议自适应构建 
-# 强制 curl 绑定网卡并自动匹配底层网络协议栈
-# ----------------------------------------------------------
-# [v4.1.6 修复] 改用 Bash 数组传参，彻底消除 Shell Word Splitting 注入隐患
+# 使用 Bash 数组传参
 CURL_BIND_ARGS=()
 DYNAMIC_IP_PREF="-${IP_PREF:-4}"
 
 if [[ -n "$BIND_IP" && "$BIND_IP" =~ ^[0-9a-fA-F:\.]+$ ]]; then
     RAW_BIND_IP=$(echo "$BIND_IP" | tr -d '[]')
-    # [v4.1.6 修复] 使用 -Fq 替代 -qw，防止 IPv6 冒号被误认为单词边界导致误杀
+    # 使用 -Fq 替代 -qw
     if ! ip addr show 2>/dev/null | grep -Fq "$RAW_BIND_IP"; then
         log_msg "WARN " "检测到配置的出口 IP ($RAW_BIND_IP) 已丢失，自动降级为系统默认路由出网！"
         CURL_BIND_ARGS=()
@@ -143,7 +113,6 @@ SUCCESS_INJECT=0
 for ((i=1; i<=STEP_COUNT; i++)); do
     TARGET_URL=${TRUST_URLS[$((RANDOM % ${#TRUST_URLS[@]}))]}
     
-    # [v4.1.6] 统一数组化执行、挂载持久化 Cookie (-b -c) 并精准捕获底层死因
     HTTP_CODE=$(curl "${CURL_BIND_ARGS[@]}" "$DYNAMIC_IP_PREF" \
         -b "$COOKIE_FILE" -c "$COOKIE_FILE" -A "$CURRENT_UA" \
         -H "Accept: text/html,application/xhtml+xml;q=0.9,image/avif,image/webp,*/*;q=0.8" \
@@ -155,7 +124,6 @@ for ((i=1; i<=STEP_COUNT; i++)); do
         -s -L -o /dev/null -w "%{http_code}" -m 15 "$TARGET_URL")
     CURL_EXIT=$?
 
-    # [v4.1.6 修复] 精准错误码映射，防空值塌陷
     if [ $CURL_EXIT -ne 0 ]; then
         case $CURL_EXIT in
             6)  HTTP_CODE="ERR_DNS" ;;
@@ -176,7 +144,6 @@ for ((i=1; i<=STEP_COUNT; i++)); do
         fi
     fi
 
-    # [v4.1.6] 随机休眠，以模拟人类正常浏览行为
     if [ $i -lt $STEP_COUNT ]; then
         SLEEP_DICE=$((RANDOM % 100))
         if [ $SLEEP_DICE -lt 45 ]; then
@@ -193,9 +160,6 @@ for ((i=1; i<=STEP_COUNT; i++)); do
     fi
 done
 
-# ==========================================================
-# 4. 结论判定与输出
-# ==========================================================
 if [ "$SUCCESS_INJECT" -ge $((STEP_COUNT / 2)) ]; then
     log_msg "SCORE" "验证结果: ✅ 信用净化完成 (已成功注入 $SUCCESS_INJECT 条无害流量)"
 else

@@ -1,8 +1,4 @@
 #!/bin/bash
-# ==========================================================
-# 模块名称: env_setup.sh
-# 核心功能: 靶机架构预检、多分支包管理器依赖补全
-# ==========================================================
 
 is_systemd() {
     command -v systemctl >/dev/null 2>&1 || return 1
@@ -54,7 +50,6 @@ do_env_precheck() {
 }
 
 do_fetch_version() {
-    # 已由外壳入口拉取并 export TARGET_VERSION，此处只需保障兜底容错
     TARGET_VERSION=${TARGET_VERSION:-"4.3.1"}
 }
 

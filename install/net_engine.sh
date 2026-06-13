@@ -1,8 +1,4 @@
 #!/bin/bash
-# ==========================================================
-# 模块名称: net_engine.sh
-# 核心功能: 冗余网络栈探测、多出口容灾弹匣装填、老节点平滑迁移网络配置
-# ==========================================================
 
 do_network_probe() {
     if [ "$UPGRADE_MODE" == "false" ]; then
@@ -11,7 +7,7 @@ do_network_probe() {
         RAW_DETECT_V4=$( (curl -4 -s -m 3 api.ip.sb/ip || curl -4 -s -m 3 ifconfig.me || curl -4 -s -m 3 ipv4.icanhazip.com) 2>/dev/null | grep -E "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | head -n 1 | tr -d '[:space:]')
         RAW_DETECT_V6=$( (curl -6 -s -m 3 api.ip.sb/ip || curl -6 -s -m 3 ifconfig.me || curl -6 -s -m 3 ipv6.icanhazip.com) 2>/dev/null | grep -E "^[0-9a-fA-F:]+.*:" | head -n 1 | tr -d '[:space:]')
 
-        # [v4.2.2 源头防线] 引入工业级网卡追踪，双重过滤 WARP/TUN/NAT 等假公网环境
+        # 过滤虚拟网卡以确保为真实公网环境
         DETECT_V4=""
         if [[ -n "$RAW_DETECT_V4" ]]; then
             V4_DEV=$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -n 1)
@@ -74,7 +70,7 @@ do_network_probe() {
             fi
         fi
 
-        # [容灾防线] 为含冒号的 IPv6 数据自动装卸方括号护盾，保障下游组件识别不崩溃
+        # 为 IPv6 地址添加方括号以适配下游组件解析
         if [[ "$PUBLIC_IP" == *":"* ]] && [[ "$PUBLIC_IP" != *"["* ]]; then
             SAFE_PUBLIC_IP="[${PUBLIC_IP}]"
         else
@@ -88,13 +84,11 @@ do_assemble_fallback() {
         echo -e "\n\033[36m[4.6/7] 正在装填通讯容灾防线 (Multi-IP Fallback)...\033[0m"
         COMM_IP="$SAFE_PUBLIC_IP"
         
-        # 注入次发弹药 (可用 IPv4)
-        if [[ -n "$DETECT_V4" ]] && [[ "$DETECT_V4" != "$PUBLIC_IP" ]]; then
+            if [[ -n "$DETECT_V4" ]] && [[ "$DETECT_V4" != "$PUBLIC_IP" ]]; then
             COMM_IP="${COMM_IP}_${DETECT_V4}"
         fi
         
-        # 注入保底弹药 (可用 IPv6，带括号保护)
-        if [[ -n "$DETECT_V6" ]] && [[ "$DETECT_V6" != "$PUBLIC_IP" ]]; then
+            if [[ -n "$DETECT_V6" ]] && [[ "$DETECT_V6" != "$PUBLIC_IP" ]]; then
             [[ "$DETECT_V6" != *"["* ]] && SAFE_V6="[${DETECT_V6}]" || SAFE_V6="$DETECT_V6"
             COMM_IP="${COMM_IP}_${SAFE_V6}"
         fi
@@ -126,8 +120,7 @@ do_assemble_fallback() {
         fi
         echo -e "\033[32m✅ 哨兵对外联络点已永久锁定至: $SAFE_PUBLIC_IP\033[0m"
 
-        # [身份分离] 分离底层系统锚定的不可变主键，与暴露给上层展示的可变别名
-        IP_HASH=$(echo "${SAFE_PUBLIC_IP:-127.0.0.1}" | md5sum | cut -c 1-4 | tr 'a-z' 'A-Z')
+            IP_HASH=$(echo "${SAFE_PUBLIC_IP:-127.0.0.1}" | md5sum | cut -c 1-4 | tr 'a-z' 'A-Z')
         NODE_NAME="$(hostname | tr -cd 'a-zA-Z0-9' | cut -c 1-10)-${IP_HASH}"
         NODE_ALIAS="$NODE_NAME"
 
@@ -160,11 +153,10 @@ do_write_config() {
         LANG_PARAMS=$(jq -r '.google_module.lang_params' "$REGION_JSON_FILE")
         VALID_URL_SUFFIX=$(jq -r '.google_module.valid_url_suffix' "$REGION_JSON_FILE")
 
-        # 本地生成高熵唯一的专属通信 Token
-        AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
+            AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
 
         cat > "$CONFIG_FILE" << EOF
-# IP-Sentinel 本地固化配置 (生成时间: $(date '+%Y-%m-%d %H:%M:%S'))
+# IP-Sentinel 本地固化配置
 AGENT_VERSION="$TARGET_VERSION"
 REGION_CODE="$REGION_CODE"
 REGION_NAME="$REGION_NAME"
@@ -173,7 +165,6 @@ BASE_LON="$BASE_LON"
 LANG_PARAMS="$LANG_PARAMS"
 VALID_URL_SUFFIX="$VALID_URL_SUFFIX"
 
-# 模块开关状态
 ENABLE_GOOGLE="$ENABLE_GOOGLE"
 ENABLE_TRUST="$ENABLE_TRUST"
 
@@ -233,8 +224,7 @@ do_smooth_migrate() {
             SAFE_PUBLIC_IP="${PUBLIC_IP}"
         fi
 
-        # [v4.2.2 热修复] 为所有老节点 (无论是否已有残缺的 COMM_IP) 强行重铸多宿主容灾弹匣
-        echo -e "\n🔄 [平滑迁移] 正在对老节点执行 v4.2.2 全域容灾弹匣重构..."
+            echo -e "\n🔄 [平滑迁移] 正在对老节点执行 v4.2.2 全域容灾弹匣重构..."
         
         RAW_V4=$(curl -4 -s -m 3 api.ip.sb/ip 2>/dev/null | tr -d '[:space:]')
         RAW_V6=$(curl -6 -s -m 3 api.ip.sb/ip 2>/dev/null | tr -d '[:space:]')
@@ -249,25 +239,21 @@ do_smooth_migrate() {
             RAW_V6=""
         fi
         
-        # 绝对基座：始终确保养护 IP (SAFE_PUBLIC_IP) 处于弹匣的首发位置
-        NEW_COMM_IP="$SAFE_PUBLIC_IP"
+            NEW_COMM_IP="$SAFE_PUBLIC_IP"
         RAW_BASE_IP=$(echo "$SAFE_PUBLIC_IP" | tr -d '[]')
         
-        # 追加 V4 容灾备弹
-        if [[ -n "$RAW_V4" ]] && [[ "$NEW_COMM_IP" != *"$RAW_V4"* ]]; then
+            if [[ -n "$RAW_V4" ]] && [[ "$NEW_COMM_IP" != *"$RAW_V4"* ]]; then
             NEW_COMM_IP="${NEW_COMM_IP}_${RAW_V4}"
         fi
         
-        # 追加 V6 容灾备弹
-        if [[ -n "$RAW_V6" ]]; then
+            if [[ -n "$RAW_V6" ]]; then
             [[ "$RAW_V6" != *"["* ]] && SAFE_V6="[${RAW_V6}]" || SAFE_V6="$RAW_V6"
             if [[ "$NEW_COMM_IP" != *"$SAFE_V6"* ]]; then
                 NEW_COMM_IP="${NEW_COMM_IP}_${SAFE_V6}"
             fi
         fi
         
-        # 强制覆盖 config.conf 中的旧 COMM_IP 记录
-        sed -i '/^COMM_IP=/d' "$CONFIG_FILE"
+            sed -i '/^COMM_IP=/d' "$CONFIG_FILE"
         echo "COMM_IP=\"$NEW_COMM_IP\"" >> "$CONFIG_FILE"
         SAFE_COMM_IP="$NEW_COMM_IP"
         
@@ -295,8 +281,7 @@ do_smooth_migrate() {
             ENABLE_OTA=$(grep "^ENABLE_OTA=" "$CONFIG_FILE" | cut -d'"' -f2)
         fi
 
-        # 升级时自动补偿生成专属通信 Token
-        local_token=""
+            local_token=""
         if grep -q "^AGENT_TOKEN=" "$CONFIG_FILE"; then
             local_token=$(grep "^AGENT_TOKEN=" "$CONFIG_FILE" | cut -d'"' -f2 | tr -d '[:space:]')
         fi

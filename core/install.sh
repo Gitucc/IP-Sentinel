@@ -1,15 +1,8 @@
 #!/bin/bash
 
-# ==========================================================
-# 脚本名称: install.sh
-# 核心功能: 环境解析、无损热升级部署与环境隔离
-# ==========================================================
-
-# 激活终端退格自适应，防止 SSH 误触产生 ^H / ^? 控制字符
 stty erase ^H 2>/dev/null || true
 stty erase '^?' 2>/dev/null || true
 
-# 模拟终端物理退格与 ANSI 控制码处理，从数据流层面修正退格污染
 process_backspaces() {
     local input="$1"
     local output=""
@@ -29,8 +22,6 @@ process_backspaces() {
     echo "$output"
 }
 
-# 为了解决 SSH 客户端因终端映射配置差异而导致的退格键转换为控制字符（如 ^H、^?）并破坏白名单及 Token 配置文件的缺陷，
-# 引入统一的输入数据过滤器与二次确认交互逻辑。此机制可在字符解析和二次交互两个维度同时拦截错误输入。
 safe_read_input() {
     local var_name="$1"
     local prompt_msg="$2"
@@ -128,22 +119,17 @@ safe_read_input() {
     done
 }
 
-
 if [ "$EUID" -ne 0 ]; then
   echo -e "\033[31m❌ 权限被拒绝: 部署 IP-Sentinel 需要最高系统权限。\033[0m"
   echo -e "💡 请切换到 root 用户 (执行 su root 或 sudo -i) 后重新运行指令。"
   exit 1
 fi
 
-# [沙盒机制] 创建含高强度熵值的安全挂载点，并在异常断开时确保物理覆写销毁
 SECURE_TMP=$(mktemp -d /tmp/ips_install.XXXXXX)
 trap 'rm -rf "$SECURE_TMP" 2>/dev/null' EXIT HUP
 trap 'exit 130' INT QUIT
 trap 'exit 143' TERM
 
-# ==========================================================
-# [环境侦测] 系统架构检测与自适应决策
-# ==========================================================
 is_systemd() {
     command -v systemctl >/dev/null 2>&1 || return 1
     [ -d /run/systemd/system ] || return 1
@@ -188,7 +174,6 @@ REPO_RAW_URL=${REPO_RAW_URL:-"https://raw.githubusercontent.com/Gitucc/IP-Sentin
 INSTALL_DIR="/opt/ip_sentinel"
 CONFIG_FILE="${INSTALL_DIR}/config.conf"
 
-# [网络容灾] 挂载解析云端最新运行版本
 TARGET_VERSION=$( (curl -fsSL --connect-timeout 5 --retry 2 "${REPO_RAW_URL}/version.txt" || curl -4 -fsSL --connect-timeout 5 --retry 2 "${REPO_RAW_URL}/version.txt") 2>/dev/null | grep "^AGENT_VERSION=" | cut -d'=' -f2 | tr -d '[:space:]')
 TARGET_VERSION=${TARGET_VERSION:-"4.1.1"}
 
@@ -196,9 +181,6 @@ version_lt() {
     test "$(printf '%s\n' "$1" "$2" | sort -V | head -n 1)" = "$1" && test "$1" != "$2"
 }
 
-# ==========================================================
-# [依赖装甲] 多分支包管理器嗅探与极简系统补全
-# ==========================================================
 echo -e "\n[1/7] 正在探测并安装基础环境依赖 (curl, jq, cron, procps, python3)..."
 REQUIRED_CMDS=("curl" "jq" "crontab" "pgrep" "python3" "openssl")
 MISSING_CMDS=()
@@ -267,9 +249,6 @@ if [ ${#MISSING_CMDS[@]} -gt 0 ]; then
 fi
 echo -e "\033[32m✅ 基础环境检测通过。\033[0m"
 
-# ----------------------------------------------------------
-# [交互中枢] LBS 地理图谱树预载
-# ----------------------------------------------------------
 echo -e "\n[2/7] 正在连线云端，拉取全球节点地图..."
 curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/data/map.json" -o "${SECURE_TMP}/map.json"
 if [ ! -s "${SECURE_TMP}/map.json" ]; then
@@ -277,7 +256,6 @@ if [ ! -s "${SECURE_TMP}/map.json" ]; then
     exit 1
 fi
 
-# [自动化架构] 拦截交互菜单，接受云端重载指令直接执行 OTA
 if [ "$SILENT_OTA" == "true" ]; then
     echo -e "\n⏳ [OTA] 静默升级指令已确认，正在剥离控制台交互..."
     ACTION_CHOICE=1
@@ -299,7 +277,6 @@ else
         exit 0
     fi
 
-    # [态势传承] 平滑升级探测，防用户误删配置档案
     UPGRADE_MODE="false"
     KEEP_LOGS="true"
 
@@ -321,9 +298,6 @@ else
     fi
 fi
 
-# ==========================================================
-# [清理环境] 安装前的环境纯净度构建与幽灵进程抹除
-# ==========================================================
 echo -e "\n⏳ 正在清理系统定时任务中的旧版条目..."
 
 crontab -l 2>/dev/null | grep -v "ip_sentinel" > "${SECURE_TMP}/cron_clean" || true
@@ -340,7 +314,7 @@ done
 rm -f /etc/local.d/ip_sentinel.start 2>/dev/null
 
 if [ "$UPGRADE_MODE" == "true" ]; then
-    # [v4.2.2 终极保障] 平滑升级时强制销毁旧版 TLS 证书与旧版 IP 缓存，逼迫下层组件重铸健康双栈装甲
+    # 平滑升级时销毁旧 TLS 证书与 IP 缓存以防证书不兼容或旧数据残留
     rm -f "${INSTALL_DIR}/core/cert.pem" "${INSTALL_DIR}/core/key.pem" "${INSTALL_DIR}/core/.last_ip" 2>/dev/null
     echo -e "🧹 历史底层缓存及残旧 TLS 证书已强制销毁，准备重铸安全装甲。"
 
@@ -357,9 +331,6 @@ else
 fi
 echo -e "\033[32m✅ 环境清理完毕，残留后台进程已清理！\033[0m"
 
-# ==========================================================
-# [交互装配] 从云端拓扑树中摘取节点信息并构建关联
-# ==========================================================
 if [ "$UPGRADE_MODE" == "false" ]; then
 
     echo -e "\n\033[36m📍 【第零级】请选择目标战区 (Continent):\033[0m"
@@ -510,15 +481,12 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         echo -e "✅ 已锁定 Webhook 通讯端口: \033[32m$AGENT_PORT\033[0m"
     fi
 
-    # ----------------------------------------------------------
-    # [网络锚定] 冗余网络栈探测与多出口智能嗅探
-    # ----------------------------------------------------------
     echo -e "\n\033[36m[4.5/7] 正在探测本机网络栈与可用出口 (多节点雷达扫描中)...\033[0m"
 
     RAW_DETECT_V4=$( (curl -4 -s -m 3 api.ip.sb/ip || curl -4 -s -m 3 ifconfig.me || curl -4 -s -m 3 ipv4.icanhazip.com) 2>/dev/null | grep -E "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | head -n 1 | tr -d '[:space:]')
     RAW_DETECT_V6=$( (curl -6 -s -m 3 api.ip.sb/ip || curl -6 -s -m 3 ifconfig.me || curl -6 -s -m 3 ipv6.icanhazip.com) 2>/dev/null | grep -E "^[0-9a-fA-F:]+.*:" | head -n 1 | tr -d '[:space:]')
 
-    # [v4.2.2 源头防线] 引入工业级网卡追踪，双重过滤 WARP/TUN/NAT 等假公网环境
+    # 过滤虚拟网卡与常见代理/隧道等非真实公网环境
     DETECT_V4=""
     if [[ -n "$RAW_DETECT_V4" ]]; then
         V4_DEV=$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -n 1)
@@ -581,26 +549,20 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         fi
     fi
 
-    # [容灾防线] 为含冒号的 IPv6 数据自动装卸方括号护盾，保障下游组件识别不崩溃
+    # 为 IPv6 地址添加方括号以适配下游组件解析
     if [[ "$PUBLIC_IP" == *":"* ]] && [[ "$PUBLIC_IP" != *"["* ]]; then
         SAFE_PUBLIC_IP="[${PUBLIC_IP}]"
     else
         SAFE_PUBLIC_IP="$PUBLIC_IP"
     fi
 
-    # ==========================================================
-    # [v4.2.2 终极架构] 智能主副容灾弹药装填 (Multi-IP Fallback)
-    # 严格排序: 1.养护IP (SAFE_PUBLIC_IP) 2.可用IPv4 3.可用IPv6
-    # ==========================================================
     echo -e "\n\033[36m[4.6/7] 正在装填通讯容灾防线 (Multi-IP Fallback)...\033[0m"
     COMM_IP="$SAFE_PUBLIC_IP"
     
-    # 注入次发弹药 (可用 IPv4)
     if [[ -n "$DETECT_V4" ]] && [[ "$DETECT_V4" != "$PUBLIC_IP" ]]; then
         COMM_IP="${COMM_IP}_${DETECT_V4}"
     fi
     
-    # 注入保底弹药 (可用 IPv6，带括号保护)
     if [[ -n "$DETECT_V6" ]] && [[ "$DETECT_V6" != "$PUBLIC_IP" ]]; then
         [[ "$DETECT_V6" != *"["* ]] && SAFE_V6="[${DETECT_V6}]" || SAFE_V6="$DETECT_V6"
         COMM_IP="${COMM_IP}_${SAFE_V6}"
@@ -633,7 +595,6 @@ if [ "$UPGRADE_MODE" == "false" ]; then
     fi
     echo -e "\033[32m✅ 哨兵对外联络点已永久锁定至: $SAFE_PUBLIC_IP\033[0m"
 
-    # [身份分离] 分离底层系统锚定的不可变主键，与暴露给上层展示的可变别名
     IP_HASH=$(echo "${SAFE_PUBLIC_IP:-127.0.0.1}" | md5sum | cut -c 1-4 | tr 'a-z' 'A-Z')
     NODE_NAME="$(hostname | tr -cd 'a-zA-Z0-9' | cut -c 1-10)-${IP_HASH}"
     NODE_ALIAS="$NODE_NAME"
@@ -648,7 +609,6 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         echo -e "✅ 已锁定节点展示别名: \033[32m$NODE_ALIAS\033[0m"
     fi
 
-    # 5. 远程拉取冷数据并解析固化
     echo -e "\n[5/7] 正在从云端数据仓库拉取 [${CITY_NAME}] 节点的底层规则..."
     REGION_JSON_FILE="${INSTALL_DIR}/data/regions/${COUNTRY_ID}/${STATE_ID}/${CITY_ID}.json"
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/data/regions/${COUNTRY_ID}/${STATE_ID}/${CITY_ID}.json" -o "$REGION_JSON_FILE"
@@ -664,11 +624,10 @@ if [ "$UPGRADE_MODE" == "false" ]; then
     LANG_PARAMS=$(jq -r '.google_module.lang_params' "$REGION_JSON_FILE")
     VALID_URL_SUFFIX=$(jq -r '.google_module.valid_url_suffix' "$REGION_JSON_FILE")
 
-    # 本地生成高熵唯一的专属通信 Token
     AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
 
     cat > "$CONFIG_FILE" << EOF
-# IP-Sentinel 本地固化配置 (生成时间: $(date '+%Y-%m-%d %H:%M:%S'))
+# IP-Sentinel Configuration
 AGENT_VERSION="$TARGET_VERSION"
 REGION_CODE="$REGION_CODE"
 REGION_NAME="$REGION_NAME"
@@ -677,7 +636,6 @@ BASE_LON="$BASE_LON"
 LANG_PARAMS="$LANG_PARAMS"
 VALID_URL_SUFFIX="$VALID_URL_SUFFIX"
 
-# 模块开关状态
 ENABLE_GOOGLE="$ENABLE_GOOGLE"
 ENABLE_TRUST="$ENABLE_TRUST"
 
@@ -704,9 +662,6 @@ EOF
 
 fi
 
-# ----------------------------------------------------------
-# [无感热重载] 老节点数据格式迁移兼容机制
-# ----------------------------------------------------------
 if [ "$UPGRADE_MODE" == "true" ]; then
     if ! grep -q "PUBLIC_IP=" "$CONFIG_FILE"; then
         echo -e "\n🔄 [平滑迁移] 正在对老节点进行无损双核身份架构升级..."
@@ -739,7 +694,6 @@ if [ "$UPGRADE_MODE" == "true" ]; then
         SAFE_PUBLIC_IP="${PUBLIC_IP}"
     fi
 
-    # [v4.2.2 热修复] 为所有老节点 (无论是否已有残缺的 COMM_IP) 强行重铸多宿主容灾弹匣
     echo -e "\n🔄 [平滑迁移] 正在对老节点执行 v4.2.2 全域容灾弹匣重构..."
     
     RAW_V4=$(curl -4 -s -m 3 api.ip.sb/ip 2>/dev/null | tr -d '[:space:]')
@@ -755,16 +709,13 @@ if [ "$UPGRADE_MODE" == "true" ]; then
         RAW_V6=""
     fi
     
-    # 绝对基座：始终确保养护 IP (SAFE_PUBLIC_IP) 处于弹匣的首发位置
     NEW_COMM_IP="$SAFE_PUBLIC_IP"
     RAW_BASE_IP=$(echo "$SAFE_PUBLIC_IP" | tr -d '[]')
     
-    # 追加 V4 容灾备弹
     if [[ -n "$RAW_V4" ]] && [[ "$NEW_COMM_IP" != *"$RAW_V4"* ]]; then
         NEW_COMM_IP="${NEW_COMM_IP}_${RAW_V4}"
     fi
     
-    # 追加 V6 容灾备弹
     if [[ -n "$RAW_V6" ]]; then
         [[ "$RAW_V6" != *"["* ]] && SAFE_V6="[${RAW_V6}]" || SAFE_V6="$RAW_V6"
         if [[ "$NEW_COMM_IP" != *"$SAFE_V6"* ]]; then
@@ -772,7 +723,6 @@ if [ "$UPGRADE_MODE" == "true" ]; then
         fi
     fi
     
-    # 强制覆盖 config.conf 中的旧 COMM_IP 记录
     sed -i '/^COMM_IP=/d' "$CONFIG_FILE"
     echo "COMM_IP=\"$NEW_COMM_IP\"" >> "$CONFIG_FILE"
     SAFE_COMM_IP="$NEW_COMM_IP"
@@ -801,7 +751,6 @@ if [ "$UPGRADE_MODE" == "true" ]; then
         ENABLE_OTA=$(grep "^ENABLE_OTA=" "$CONFIG_FILE" | cut -d'"' -f2)
     fi
 
-    # 升级时自动补偿生成专属通信 Token
     local_token=""
     if grep -q "^AGENT_TOKEN=" "$CONFIG_FILE"; then
         local_token=$(grep "^AGENT_TOKEN=" "$CONFIG_FILE" | cut -d'"' -f2 | tr -d '[:space:]')
@@ -815,10 +764,6 @@ if [ "$UPGRADE_MODE" == "true" ]; then
     fi
 fi
 
-# ==========================================================
-# [原子交接] 防变砖临时更新目录
-# 必须保证核心模块物理就绪后，才允许向当前正在运行的旧引擎开火
-# ==========================================================
 echo -e "\n[6/7] 正在部署核心引擎与热数据..."
 mkdir -p "${INSTALL_DIR}/data/keywords"
 
@@ -834,7 +779,7 @@ curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_google.sh" -
 curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_trust.sh" -o "${TMP_CORE}/mod_trust.sh"
 curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_quality.sh" -o "${TMP_CORE}/mod_quality.sh"
 
-# 🛡️ 终极自检墙：一旦任意文件缺失或长度为零，直接熔断放弃覆写，确保宿主不宕机
+# 检查拉取的核心文件完整性，防止因网络原因导致节点不可用
 if [ ! -s "${TMP_CORE}/runner.sh" ] || [ ! -s "${TMP_CORE}/agent_daemon.sh" ]; then
     echo -e "\033[31m❌ 致命错误：核心代码拉取失败！网络阻断或 GitHub Raw 异常。\033[0m"
     echo "🛡️ 防砖升级熔断：已终止覆盖，旧版哨兵引擎仍安全存活中。"
@@ -865,9 +810,6 @@ else
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/data/keywords/kw_${REGION_CODE}.txt" -o "${INSTALL_DIR}/data/keywords/kw_${REGION_CODE}.txt" 2>/dev/null || true
 fi
 
-# ==========================================================
-# [进程守护] Systemd 原生注入与定时重试调度
-# ==========================================================
 echo -e "\n[7/7] 正在注入系统守护进程与调度器..."
 
 DEPLOY_UTC_HOUR=$(date -u +%H)
@@ -1078,9 +1020,6 @@ EOF
         fi
     fi
 
-# ----------------------------------------------------------
-# [通讯指控] 部署后首播，打入中枢通信网关及指令态势传递
-# ----------------------------------------------------------
 # 提前固化注册报文，确保即使节点端不配置 TG_TOKEN，也能在终端打印出最新的同步报文以供中枢登记
 REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
 
@@ -1090,7 +1029,6 @@ if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
         OLD_VERSION=$(grep "^AGENT_VERSION=" "$CONFIG_FILE" | cut -d'"' -f2)
         [ -z "$OLD_VERSION" ] && OLD_VERSION="3.3.1"
         
-        # [v4.2.2 跨代升级防线] 只要是从低于 4.2.2 的版本升上来，强制要求用户点击注册指令同步多宿主弹匣
         if version_lt "$OLD_VERSION" "4.2.2"; then
             echo -e "\n📡 [路由枢纽] 正在执行容灾架构重组 (v${OLD_VERSION} -> v${TARGET_VERSION})..."
             TEXT_MSG="✨ *IP-Sentinel 容灾引擎热更新完成！*
@@ -1166,7 +1104,6 @@ echo "⚙️ 哨兵现已开启 [每20分钟] 的高频高拟真养护循环。"
 if [[ -n "$TG_TOKEN" ]]; then
     echo "📡 Webhook 监听已启动 (端口: $AGENT_PORT) 并向中枢发送了注册请求。"
     
-    # [v4.2.2 防火墙修正] 适配多宿主 IP 提示
     IS_V6_COMM="false"
     [[ "$SAFE_COMM_IP" == *":"* ]] && IS_V6_COMM="true"
     

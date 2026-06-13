@@ -1,12 +1,5 @@
 #!/bin/bash
-# ==========================================================
-# 模块名称: sys_daemon.sh
-# 核心功能: 安装前物理清洗、双缓冲下载执行域、Systemd/Cron 进程注入
-# ==========================================================
 
-# ----------------------------------------------------------
-# [时序 6] 安装前的环境纯净度构建与幽灵进程抹除
-# ----------------------------------------------------------
 do_clean_env() {
     echo -e "\n⏳ 正在清理系统定时任务中的旧版条目..."
 
@@ -24,7 +17,7 @@ do_clean_env() {
     rm -f /etc/local.d/ip_sentinel.start 2>/dev/null
 
     if [ "$UPGRADE_MODE" == "true" ]; then
-        # [v4.2.2 终极保障] 平滑升级时强制销毁旧版 TLS 证书与旧版 IP 缓存，逼迫下层组件重铸健康双栈装甲
+        # 平滑升级时强制销毁旧版 TLS 证书与旧版 IP 缓存
         rm -f "${INSTALL_DIR}/core/cert.pem" "${INSTALL_DIR}/core/key.pem" "${INSTALL_DIR}/core/.last_ip" 2>/dev/null
         echo -e "🧹 历史底层缓存及残旧 TLS 证书已强制销毁，准备重铸安全装甲。"
 
@@ -42,9 +35,6 @@ do_clean_env() {
     echo -e "\033[32m✅ 环境清理完毕，幽灵进程已肃清！\033[0m"
 }
 
-# ----------------------------------------------------------
-# [时序 11] 防变砖双缓冲下载执行域 (覆写引擎)
-# ----------------------------------------------------------
 do_deploy_core() {
     echo -e "\n[6/7] 正在部署核心引擎与热数据..."
     mkdir -p "${INSTALL_DIR}/data/keywords"
@@ -61,7 +51,7 @@ do_deploy_core() {
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_trust.sh" -o "${TMP_CORE}/mod_trust.sh"
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_quality.sh" -o "${TMP_CORE}/mod_quality.sh"
 
-    # 🛡️ 终极自检墙：一旦任意文件缺失或长度为零，直接熔断放弃覆写，确保宿主不宕机
+    # 检查拉取的核心文件完整性，防止因网络原因导致节点不可用
     if [ ! -s "${TMP_CORE}/runner.sh" ] || [ ! -s "${TMP_CORE}/agent_daemon.sh" ]; then
         echo -e "\033[31m❌ 致命错误：核心代码拉取失败！网络阻断或 GitHub Raw 异常。\033[0m"
         echo "🛡️ 防砖机制触发：已中止覆盖，旧版哨兵引擎仍安全存活中。"
@@ -93,9 +83,6 @@ do_deploy_core() {
     fi
 }
 
-# ----------------------------------------------------------
-# [时序 12] Systemd 原生注入与微内核定时降级兜底
-# ----------------------------------------------------------
 do_inject_daemon() {
     echo -e "\n[7/7] 正在注入系统守护进程与调度器..."
 

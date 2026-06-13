@@ -1,14 +1,8 @@
 #!/bin/bash
-# ==========================================================
-# 模块名称: master_setup.sh
-# 核心功能: Master 环境清洗、令牌交互、SQLite 建库、守护进程注入与结果呈现
-# ==========================================================
 
-# 激活终端退格自适应，防止 SSH 误触产生 ^H / ^? 控制字符
 stty erase ^H 2>/dev/null || true
 stty erase '^?' 2>/dev/null || true
 
-# 模拟终端物理退格与 ANSI 控制码处理，从数据流层面修正退格污染
 process_backspaces() {
     local input="$1"
     local output=""
@@ -28,8 +22,6 @@ process_backspaces() {
     echo "$output"
 }
 
-# 为了解决 SSH 客户端因终端映射配置差异而导致的退格键转换为控制字符（如 ^H、^?）并破坏白名单及 Token 配置文件的缺陷，
-# 引入统一的输入数据过滤器与二次确认交互逻辑。此机制可在字符解析和二次交互两个维度同时拦截错误输入。
 safe_read_input() {
     local var_name="$1"
     local prompt_msg="$2"
@@ -127,7 +119,6 @@ safe_read_input() {
     done
 }
 
-
 is_systemd() {
     command -v systemctl >/dev/null 2>&1 || return 1
     [ -d /run/systemd/system ] || return 1
@@ -155,7 +146,6 @@ get_virt_info() {
     fi
 }
 
-# 预检部分需要单独定制，因为 Master 有专属横幅
 do_master_env_precheck() {
     echo -e "\n======================================"
     echo -e "📊 \033[36mIP-Sentinel 中枢靶机环境侦测\033[0m"
@@ -303,7 +293,7 @@ do_master_config() {
         echo -e "✅ 已锁定司令部展示别名: \033[32m$MASTER_NODE_NAME\033[0m"
 
         cat > "${MASTER_DIR}/master.conf" << EOF
-# IP-Sentinel Master 本地配置 (v${TARGET_VERSION})
+# IP-Sentinel Master 本地配置
 MASTER_VERSION="$TARGET_VERSION"
 MASTER_NODE_NAME="$MASTER_NODE_NAME"
 TG_TOKEN="$TG_TOKEN"

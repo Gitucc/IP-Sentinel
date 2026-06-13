@@ -1,13 +1,6 @@
 import random
 import os
 
-# ==========================================================
-# IP-Sentinel 终极动态指纹工厂 (V5.1.1 - 破除死循环抢修版)
-# 战术核心:
-# 1. 放弃 set 去重，允许重复特征存在 (真实世界本就如此)
-# 2. 彻底解决组合基数过小导致的 Infinite Loop 卡死问题
-# ==========================================================
-
 TOTAL_POOL = 4000
 
 def weighted_choice(weighted_items):
@@ -16,9 +9,6 @@ def weighted_choice(weighted_items):
         items.extend([value] * weight)
     return random.choice(items)
 
-# ----------------------------------------------------------
-# 核心组件库
-# ----------------------------------------------------------
 FIREFOX_ESR_VERSIONS = [
     ("115.0", 50), 
     ("128.0", 50), 
@@ -39,9 +29,6 @@ def generate_old_chrome():
     patch = random.randint(40, 150)
     return f"{major}.0.{build}.{patch}"
 
-# ----------------------------------------------------------
-# 1. Linux Firefox ESR (35% -> 1400条)
-# ----------------------------------------------------------
 def generate_linux_firefox(count=1400):
     uas = []
     for _ in range(count):
@@ -50,9 +37,6 @@ def generate_linux_firefox(count=1400):
         uas.append(f"Mozilla/5.0 ({distro}; rv:{ff_ver}) Gecko/20100101 Firefox/{ff_ver}")
     return uas
 
-# ----------------------------------------------------------
-# 2. Windows Firefox ESR (25% -> 1000条)
-# ----------------------------------------------------------
 def generate_windows_firefox(count=1000):
     uas = []
     for _ in range(count):
@@ -61,9 +45,6 @@ def generate_windows_firefox(count=1000):
         uas.append(f"Mozilla/5.0 ({os_ver}; Win64; x64; rv:{ff_ver}) Gecko/20100101 Firefox/{ff_ver}")
     return uas
 
-# ----------------------------------------------------------
-# 3. Android Firefox (15% -> 600条)
-# ----------------------------------------------------------
 def generate_android_firefox(count=600):
     uas = []
     for _ in range(count):
@@ -72,9 +53,6 @@ def generate_android_firefox(count=600):
         uas.append(f"Mozilla/5.0 (Android {android_ver}; Mobile; rv:{ff_ver}) Gecko/{ff_ver} Firefox/{ff_ver}")
     return uas
 
-# ----------------------------------------------------------
-# 4. 降现代化 Chromium 池 (15% -> 600条)
-# ----------------------------------------------------------
 def generate_old_chromium(count=600):
     uas = []
     mid_end_models = [
@@ -94,9 +72,6 @@ def generate_old_chromium(count=600):
             uas.append(f"Mozilla/5.0 (Linux; Android {android_ver}; {model}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_ver} Mobile Safari/537.36")
     return uas
 
-# ----------------------------------------------------------
-# 5. 少量生态噪声 Safari (10% -> 400条)
-# ----------------------------------------------------------
 def generate_safari_noise(count=400):
     uas = []
     for _ in range(count):
@@ -113,9 +88,6 @@ def generate_safari_noise(count=400):
             uas.append(f"Mozilla/5.0 (iPhone; CPU iPhone OS {ios_major}_{ios_minor} like Mac OS X) AppleWebKit/{safari_webkit} (KHTML, like Gecko) Version/{ios_major}.0 Mobile/15E148 Safari/{safari_webkit}")
     return uas
 
-# ----------------------------------------------------------
-# 主程序
-# ----------------------------------------------------------
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     pool = []
@@ -135,4 +107,4 @@ if __name__ == "__main__":
         for ua in final_pool:
             f.write(ua + "\n")
 
-    print(f"✅ 成功生成 {len(final_pool)} 条大智若愚架构指纹库 (V5.1.1 破除卡死版)")
+    print(f"成功生成 {len(final_pool)} 条 User-Agent 指纹")

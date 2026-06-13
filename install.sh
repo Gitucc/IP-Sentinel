@@ -1,8 +1,4 @@
 #!/bin/bash
-# ==========================================================
-# 脚本名称: install.sh (动态模块化终极引导入口)
-# 核心功能: 权限鉴定、沙盒创建、Ctrl+C 熔断保护、动态版本嗅探
-# ==========================================================
 
 if [ "$EUID" -ne 0 ]; then
   echo -e "\033[31m❌ 权限被拒绝: 部署 IP-Sentinel 需要最高系统权限。\033[0m"
@@ -23,9 +19,6 @@ trap 'rm -rf "$SECURE_TMP" 2>/dev/null' EXIT HUP
 
 REPO_RAW_URL=${REPO_RAW_URL:-"https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"}
 
-# ----------------------------------------------------------
-# [核心架构升级] 动态嗅探云端真理之源 (SSOT)
-# ----------------------------------------------------------
 TARGET_VERSION=$( (curl -fsSL --connect-timeout 5 --retry 2 "${REPO_RAW_URL}/version.txt?t=$(date +%s)" || curl -4 -fsSL --connect-timeout 5 --retry 2 "${REPO_RAW_URL}/version.txt?t=$(date +%s)") 2>/dev/null | grep "^AGENT_VERSION=" | cut -d'=' -f2 | tr -d '[:space:]')
 TARGET_VERSION=${TARGET_VERSION:-"4.3.1"}
 

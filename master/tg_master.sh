@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# ==========================================================
-# 脚本名称: tg_master.sh
-# 核心功能: 监听并处理全局指令回调，安全下发 OTA、Webhook、节点改名及僵尸节点清洗
-# ==========================================================
-
 CONF="/opt/ip_sentinel_master/master.conf"
 [ ! -f "$CONF" ] && exit 1
 source "$CONF"
@@ -15,11 +10,6 @@ MASTER_VERSION=${MASTER_VERSION:-"3.5.0"}
 OFFSET_FILE="${MASTER_DIR}/.tg_offset"
 [[ -f $OFFSET_FILE ]] || echo "0" > $OFFSET_FILE
 
-# ==========================================================
-# 1. 核心工具组件
-# ==========================================================
-
-# [全局旗帜渲染引擎] 基于 ISO 代码动态匹配地区国旗
 get_flag() {
     local region=$(echo "$1" | tr 'a-z' 'A-Z')
     local base_cc="${region%%-*}"
@@ -127,13 +117,10 @@ dispatch_agent_request() {
     echo "FAILED"
 }
 
-# ==========================================================
-# 2. 数据库热升级自愈系统
-# ==========================================================
 execute_sqlite_query "PRAGMA journal_mode=WAL;" > /dev/null 2>&1
 execute_sqlite_query "PRAGMA synchronous=NORMAL;" > /dev/null 2>&1
 
-# 自动探测并动态扩展节点基础表结构，屏蔽已存在的报错
+# 自动探测并动态扩展节点表结构
 execute_sqlite_query "ALTER TABLE nodes ADD COLUMN region TEXT DEFAULT 'UNKNOWN';" 2>/dev/null
 execute_sqlite_query "ALTER TABLE nodes ADD COLUMN node_alias TEXT;" 2>/dev/null
 execute_sqlite_query "ALTER TABLE nodes ADD COLUMN enable_google TEXT DEFAULT 'true';" 2>/dev/null
@@ -141,7 +128,6 @@ execute_sqlite_query "ALTER TABLE nodes ADD COLUMN enable_trust TEXT DEFAULT 'tr
 execute_sqlite_query "ALTER TABLE nodes ADD COLUMN enable_ota TEXT DEFAULT 'false';" 2>/dev/null
 execute_sqlite_query "ALTER TABLE nodes ADD COLUMN agent_token TEXT;" 2>/dev/null
 
-# 构建与动态扩展 IP 质量历史趋势库
 execute_sqlite_query "CREATE TABLE IF NOT EXISTS ip_trend_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     node_name TEXT,
@@ -152,9 +138,6 @@ execute_sqlite_query "CREATE TABLE IF NOT EXISTS ip_trend_log (
 execute_sqlite_query "ALTER TABLE ip_trend_log ADD COLUMN goog_status TEXT DEFAULT 'Unknown';" 2>/dev/null
 execute_sqlite_query "ALTER TABLE ip_trend_log ADD COLUMN gpt_status TEXT DEFAULT 'Unknown';" 2>/dev/null
 
-# ==========================================================
-# 3. 核心长轮询调度器
-# ==========================================================
 while true; do
     OFFSET=$(cat $OFFSET_FILE)
     UPDATES=$(curl -s --connect-timeout 5 -m 35 "https://api.telegram.org/bot${TG_TOKEN}/getUpdates?offset=${OFFSET}&timeout=30")
@@ -167,28 +150,23 @@ while true; do
             echo $((UPDATE_ID + 1)) > $OFFSET_FILE
             
             CHAT_ID=$(echo "$UPDATE" | jq -r '.message.chat.id // .callback_query.message.chat.id')
-            # 强制清洗 CHAT_ID，防止 SQL 注入与命令参数注入
-            CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
+                CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
             
-            # 中枢管理者身份白名单防线
+            # 校验管理者 CHAT_ID
             if [[ -n "$ALLOWED_CHAT_ID" ]] && [[ "$CHAT_ID" != "$ALLOWED_CHAT_ID" ]]; then
                 continue
             fi
             
             callback_payload=$(echo "$UPDATE" | jq -r '.message.text // .callback_query.data')
 
-            # 提取交互回调 ID 与消息 ID，确保后续 UI 重绘正常流转
-            callback_query_id=$(echo "$UPDATE" | jq -r '.callback_query.id // empty')
+                callback_query_id=$(echo "$UPDATE" | jq -r '.callback_query.id // empty')
             callback_message_id=$(echo "$UPDATE" | jq -r '.callback_query.message.message_id // empty')
 
-            # ----------------------------------------------------------
-            # [业务流 A] IP 质量体检报告一键入库模块
-            # ----------------------------------------------------------
             if [[ "$callback_payload" == "svq|"* ]]; then
                 IFS='|' read -r protocol_header RAW_NODE_ID RAW_SCORE RAW_GOOG_ST RAW_NF_ST RAW_GPT_ST <<< "$callback_payload"
                 CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
                 
-                # 严格正则清洗，防范 SQL 注入
+                # 正则清洗防范 SQL 注入
                 NODE_ID=$(echo "$RAW_NODE_ID" | tr -cd 'a-zA-Z0-9_.-')
                 SCORE=$(echo "$RAW_SCORE" | tr -cd '0-9')
                 GOOG_ST=$(echo "$RAW_GOOG_ST" | tr -d '"'\''\`\$\|&;<>\n\r')
@@ -205,8 +183,7 @@ while true; do
                             -d "show_alert=false" > /dev/null
                     fi
 
-                    # 无损修改原消息，擦除入库按钮
-                    if [ -n "$callback_message_id" ]; then
+                                if [ -n "$callback_message_id" ]; then
                         curl -s --connect-timeout 5 -m 10 -X POST "https://api.telegram.org/bot${TG_TOKEN}/editMessageReplyMarkup" \
                             -H "Content-Type: application/json" \
                             -d "{\"chat_id\":\"${CHAT_ID}\",\"message_id\":\"${callback_message_id}\",\"reply_markup\":{\"inline_keyboard\":[[{\"text\":\"✅ 此报告已存档\",\"callback_data\":\"ignore\"}],[{\"text\":\"⚙️ 调出该节点控制台\",\"callback_data\":\"manage:${NODE_ID}\"}]]}}" > /dev/null
@@ -224,28 +201,20 @@ while true; do
             
             REPLY_TO_TEXT=$(echo "$UPDATE" | jq -r '.message.reply_to_message.text // empty')
 
-            # ----------------------------------------------------------
-            # [业务流 B] 拦截并解析别名重命名回执
-            # ----------------------------------------------------------
             if [[ "$REPLY_TO_TEXT" == *"✏️ 请回复本消息以重命名节点:"* ]]; then
                 TARGET_NODE=$(echo "$REPLY_TO_TEXT" | grep -v "✏️" | grep -v "仅限" | tr -d '\` ' | tr -cd 'a-zA-Z0-9_.-' | head -n 1)
                 
-                # 黑名单清洗策略，保护内部路由特征并容纳 Unicode
-                NEW_ALIAS=$(echo "$callback_payload" | sed 's/_/-/g' | tr -d '"'\''\`\$\|&;<>\n\r:' | cut -c 1-30)
+                    NEW_ALIAS=$(echo "$callback_payload" | sed 's/_/-/g' | tr -d '"'\''\`\$\|&;<>\n\r:' | cut -c 1-30)
                 
                 if [ -n "$TARGET_NODE" ] && [ -n "$NEW_ALIAS" ]; then
                     callback_payload="do_rename:${TARGET_NODE}:${NEW_ALIAS}"
                 fi
             fi
             
-            # ----------------------------------------------------------
-            # [业务流 C] 边缘节点激活与安全握手注册
-            # ----------------------------------------------------------
             if [[ "$callback_payload" == *"#REGISTER#"* ]]; then
                 registration_record=$(echo "$callback_payload" | grep "#REGISTER#" | head -n 1 | tr -d '` ')
                 
-                # 双栈与安全 Token 报文解析
-                FIELD_COUNT=$(echo "$registration_record" | awk -F'|' '{print NF}')
+                    FIELD_COUNT=$(echo "$registration_record" | awk -F'|' '{print NF}')
                 if [ "$FIELD_COUNT" -ge 8 ]; then
                     IFS='|' read -r protocol_header RAW_REGION RAW_NODE RAW_IP RAW_PORT RAW_ALIAS RAW_OTA RAW_TOKEN <<< "$registration_record"
                 elif [ "$FIELD_COUNT" -eq 7 ]; then
@@ -279,7 +248,7 @@ while true; do
                 [ -z "$AGENT_OTA" ] && AGENT_OTA="false"
                 AGENT_TOKEN=$(echo "$RAW_TOKEN" | tr -cd 'a-fA-F0-9')
                 
-                # 限制非公网或回环地址注册，防范 SSRF
+                # 限制非公网或回环地址以防御 SSRF
                 if [[ "$AGENT_IP" =~ ^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^::1$|^localhost$ ]]; then
                     send_msg "$CHAT_ID" "⛔ **安全过滤**：禁止注册私有或本地回环地址，以防御 SSRF 渗透。"
                     continue
@@ -290,11 +259,9 @@ while true; do
                     continue
                 fi
 
-                # 允许 agent_ip 字段以逗号分隔的形式完整固化多路由通道，并安全绑定专属通信 Token
-                execute_sqlite_query "INSERT INTO nodes (chat_id, node_name, agent_ip, agent_port, last_seen, region, node_alias, enable_ota, agent_token) VALUES ('$CHAT_ID', '$NODE_NAME', '$AGENT_IP', '$AGENT_PORT', CURRENT_TIMESTAMP, '$AGENT_REGION', '$NODE_ALIAS', '$AGENT_OTA', '$AGENT_TOKEN') ON CONFLICT(chat_id, node_name) DO UPDATE SET agent_ip='$AGENT_IP', agent_port='$AGENT_PORT', last_seen=CURRENT_TIMESTAMP, region='$AGENT_REGION', node_alias='$NODE_ALIAS', enable_ota='$AGENT_OTA', agent_token='$AGENT_TOKEN';"
+                    execute_sqlite_query "INSERT INTO nodes (chat_id, node_name, agent_ip, agent_port, last_seen, region, node_alias, enable_ota, agent_token) VALUES ('$CHAT_ID', '$NODE_NAME', '$AGENT_IP', '$AGENT_PORT', CURRENT_TIMESTAMP, '$AGENT_REGION', '$NODE_ALIAS', '$AGENT_OTA', '$AGENT_TOKEN') ON CONFLICT(chat_id, node_name) DO UPDATE SET agent_ip='$AGENT_IP', agent_port='$AGENT_PORT', last_seen=CURRENT_TIMESTAMP, region='$AGENT_REGION', node_alias='$NODE_ALIAS', enable_ota='$AGENT_OTA', agent_token='$AGENT_TOKEN';"
                 
-                # 统一将下划线替换为逗号，再进行格式化输出
-                FMT_AGENT_IP=$(echo "$AGENT_IP" | tr '_' ',')
+                    FMT_AGENT_IP=$(echo "$AGENT_IP" | tr '_' ',')
                 MAIN_SHOW_IP=$(echo "$FMT_AGENT_IP" | cut -d',' -f1)
                 BACKUP_SHOW_IP=$(echo "$FMT_AGENT_IP" | cut -d',' -f2-)
                 if [ -n "$BACKUP_SHOW_IP" ]; then
@@ -318,10 +285,6 @@ while true; do
                 continue
             fi
 
-
-            # ----------------------------------------------------------
-            # [业务流 D] 控制中枢指令集与面板呈现引擎
-            # ----------------------------------------------------------
             case "$callback_payload" in
                 "/start"|"/menu")
                     REMOTE_VER=$(curl -s -m 2 "${REPO_RAW_URL}/version.txt" | grep "^MASTER_VERSION=" | cut -d'=' -f2 | tr -d '[:space:]')
@@ -347,8 +310,7 @@ while true; do
                         BTNS="[[{\"text\":\"🌍 进入全球雷达 (管理节点)\",\"callback_data\":\"list_nodes\"}], [{\"text\":\"🚀 唤醒全局巡逻\",\"callback_data\":\"all_run\"}, {\"text\":\"📊 获取全局简报\",\"callback_data\":\"all_reports\"}], [{\"text\":\"🌟 前往 GitHub 点亮星标\",\"url\":\"https://github.com/Gitucc/IP-Sentinel\"}]]"
                     fi
                     DISP_MASTER="${MASTER_NODE_NAME:-未命名中枢}"
-                    # [UI 微调] 移除 📍 棒棒糖图标，保持与 "当前版本: " 的 4 个汉字对齐
-                    TEXT_MSG="🛡️ **IP-Sentinel 控制中枢**\n${VER_INFO}\n中枢节点: \`${DISP_MASTER}\`\n\n📊 节点状态: 共有 \`${NODE_COUNT}\` 台节点在线\n欢迎回来，管理者。请下达系统指令："
+                                TEXT_MSG="🛡️ **IP-Sentinel 控制中枢**\n${VER_INFO}\n中枢节点: \`${DISP_MASTER}\`\n\n📊 节点状态: 共有 \`${NODE_COUNT}\` 台节点在线\n欢迎回来，管理者。请下达系统指令："
                     send_ui "$CHAT_ID" "$TEXT_MSG" "$BTNS"
                     ;;
                     
@@ -390,8 +352,7 @@ while true; do
 
                     curl -fsSL "${REPO_RAW_URL}/master/install_master.sh" -o "/tmp/install_master.sh"
                     
-                    # [OTA 防砖机制] 严格校验脚本语法完整性，防止传输中断导致司令部失联
-                    if ! bash -n "/tmp/install_master.sh" >/dev/null 2>&1; then
+                                if ! bash -n "/tmp/install_master.sh" >/dev/null 2>&1; then
                         if [ -n "$callback_message_id" ]; then
                             edit_msg "$CHAT_ID" "$callback_message_id" "❌ OTA 传输受损：脚本下载不完整，已触发熔断，升级取消！"
                         else
@@ -671,15 +632,13 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     TARGET_NODE=$(echo "${callback_payload#*:}" | tr -cd 'a-zA-Z0-9_.-')
                     CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
                     
-                    # [验权防御] 防止通过伪造回调接口越权摧毁他人节点档案
-                    VALID_OWNER=$(execute_sqlite_query "SELECT 1 FROM nodes WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE' LIMIT 1;")
+                            VALID_OWNER=$(execute_sqlite_query "SELECT 1 FROM nodes WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE' LIMIT 1;")
                     
                     if [ "$VALID_OWNER" == "1" ]; then
                         execute_sqlite_query "DELETE FROM nodes WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE';"
                         execute_sqlite_query "DELETE FROM ip_trend_log WHERE node_name='$TARGET_NODE';"
                         
-                        # 销毁成功后，动态编辑当前面板以防点击残留，并发送捷报
-                        if [ -n "$callback_message_id" ]; then
+                                    if [ -n "$callback_message_id" ]; then
                             edit_msg "$CHAT_ID" "$callback_message_id" "🗑️ 节点 \`$TARGET_NODE\` 的档案及污染趋势历史已被强行抹除。"
                         else
                             send_msg "$CHAT_ID" "🗑️ 节点 \`$TARGET_NODE\` 的档案及历史污染趋势已从中枢彻底销毁！"
@@ -693,8 +652,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                         continue
                     fi
                     
-                    # 销毁后重新加载战区级雷达矩阵
-                    REGION_DATA=$(execute_sqlite_query "SELECT region, COUNT(*) FROM nodes WHERE chat_id='$CHAT_ID' GROUP BY region;")
+                            REGION_DATA=$(execute_sqlite_query "SELECT region, COUNT(*) FROM nodes WHERE chat_id='$CHAT_ID' GROUP BY region;")
                     if [ -z "$REGION_DATA" ]; then
                         send_msg "$CHAT_ID" "⚠️ 当前中枢已无任何节点挂载。"
                     else
@@ -728,8 +686,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
                         send_msg "$CHAT_ID" "⏳ 正在向 \`$TARGET_NODE\` 下发重命名指令，正在建立加密隧道..."
                         
-                        # [防线穿越] 借由 Base64 编码对下发特征进行混淆与防篡改护甲加持
-                        ALIAS_B64=$(echo -n "$NEW_ALIAS" | base64 | tr -d '\n' | tr '+/' '-_')
+                                    ALIAS_B64=$(echo -n "$NEW_ALIAS" | base64 | tr -d '\n' | tr '+/' '-_')
                         RESPONSE=$(dispatch_agent_request "$AGENT_IP" "$AGENT_PORT" "/trigger_rename" "b64=${ALIAS_B64}" "$TARGET_NODE")
                         
                         if [ "$RESPONSE" == "FAILED" ]; then
@@ -761,8 +718,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     AGENT_IP=$(echo "$AGENT_INFO" | cut -d'|' -f1)
                     AGENT_PORT=$(echo "$AGENT_INFO" | cut -d'|' -f2)
 
-                    # [修正点] 必须保留这层外壳判断
-                    if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
+                            if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
                         if [ -n "$callback_message_id" ]; then
                             edit_msg "$CHAT_ID" "$callback_message_id" "⏳ 正在向 \`$TARGET_NODE\` 发送 OTA 触发报文..."
                         else
@@ -800,8 +756,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     AGENT_IP=$(echo "$AGENT_INFO" | cut -d'|' -f1)
                     AGENT_PORT=$(echo "$AGENT_INFO" | cut -d'|' -f2)
 
-                    # [修正点] 必须保留这层外壳判断
-                    if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
+                            if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
                         if [ -n "$callback_message_id" ]; then
                             edit_msg "$CHAT_ID" "$callback_message_id" "⏳ 正在向 \`$TARGET_NODE\` ($AGENT_IP) 下发 [$ACTION_TYPE] 指令，请稍候..."
                         else
@@ -844,10 +799,8 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     fi
                     ;;
 
-
                 trend:*)
-                    # [态势感知面板] 提取近 15 次的历史追踪记录
-                    TARGET_NODE=$(echo "${callback_payload#*:}" | tr -cd 'a-zA-Z0-9_.-')
+                            TARGET_NODE=$(echo "${callback_payload#*:}" | tr -cd 'a-zA-Z0-9_.-')
                     CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
                     
                     TREND_DATA=$(execute_sqlite_query "SELECT datetime(check_time, 'localtime'), scam_score, goog_status, nf_status, gpt_status FROM ip_trend_log WHERE node_name='$TARGET_NODE' ORDER BY check_time DESC LIMIT 15;")

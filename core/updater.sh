@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# ==========================================================
-# 脚本名称: updater.sh
-# 核心功能: 指纹防惊群错峰轮换、LBS 底层静默分发、深度探针签名防伪
-# ==========================================================
 
 INSTALL_DIR="/opt/ip_sentinel"
 CONFIG_FILE="${INSTALL_DIR}/config.conf"
@@ -11,20 +7,18 @@ UA_TIME_FILE="${INSTALL_DIR}/core/.ua_last_update"
 
 REPO_RAW_URL="https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main"
 
-# --- [底层数据链装载] ---
 if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 source "$CONFIG_FILE"
 
-# --- [全局态势日志系统] ---
 log() {
     local local_ver="${AGENT_VERSION:-未知}"
     
     mkdir -p "${INSTALL_DIR}/logs"
 
     local core_msg=$(printf "[v%-5s] [%-5s] [%-7s] [%s] %s" "$local_ver" "$2" "$1" "$REGION_CODE" "$3")
-    # 强制剔除节点宿主机本地时差，严格对齐指挥部 UTC 基准
+    # 使用 UTC 时间以统一时间基准
     echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $core_msg" >> "$LOG_FILE"
 
     if command -v logger >/dev/null 2>&1; then
@@ -36,9 +30,6 @@ log() {
 
 log "Updater" "INFO " "========== 触发后台静默 OTA 热数据更新 =========="
 
-# ==========================================================
-# [网络路由锁定] 构建强锚定出站屏障，彻底阻断跨协议溢出逃逸
-# ==========================================================
 CURL_CMD="curl -${IP_PREF:-4} -sL"
 
 if [ -n "$BIND_IP" ]; then
@@ -50,10 +41,6 @@ if [ -n "$BIND_IP" ]; then
     fi
 fi
 
-# ==========================================================
-# [指纹池滚动更新] 错峰调度防惊群风暴算法
-# 强制设定 30 天超长冷静期以规避 Github 限流与特征同构
-# ==========================================================
 NOW=$(date +%s)
 LAST_UPDATE=0
 
@@ -84,9 +71,6 @@ else
     log "Updater" "INFO " "⏳ 设备指纹池处于 30 天静默期 (剩余约 ${DAYS_LEFT} 天)，跳过拉取"
 fi
 
-# ----------------------------------------------------------
-# [态势感知热更] 动态注入本土高权热搜及战区 LBS 规则
-# ----------------------------------------------------------
 TMP_KW="/tmp/ip_sentinel_kw.txt"
 $CURL_CMD "${REPO_RAW_URL}/data/keywords/kw_${REGION_CODE}.txt" -o "$TMP_KW"
 
@@ -115,13 +99,10 @@ if [ -n "$REGION_JSON_FILE" ] && [ -f "$REGION_JSON_FILE" ]; then
     fi
 fi
 
-# ==========================================================
-# [容灾校验] 外置供应链投毒防线与底层签名嗅探
-# ==========================================================
 TMP_PROBE="/tmp/ip_sentinel_probe.sh"
 $CURL_CMD "https://raw.githubusercontent.com/xykt/IPQuality/main/ip.sh" -o "$TMP_PROBE"
 
-# 严格过滤无标识或 HTML 劫持阻断页面，免疫上游源的降级攻击
+# 校验下载文件的有效性，防止拉取不完整或劫持网页覆盖本地探针
 if [ -s "$TMP_PROBE" ] && grep -q "xykt" "$TMP_PROBE" 2>/dev/null; then
     mv "$TMP_PROBE" "${INSTALL_DIR}/core/ip_probe.sh"
     chmod +x "${INSTALL_DIR}/core/ip_probe.sh"
@@ -131,9 +112,6 @@ else
     rm -f "$TMP_PROBE" 2>/dev/null
 fi
 
-# ==========================================================
-# [空间瘦身] 长效健康清理与爆栈预防机制
-# ==========================================================
 if [ -f "$LOG_FILE" ]; then
     tail -n 2000 "$LOG_FILE" > "${LOG_FILE}.tmp"
     mv "${LOG_FILE}.tmp" "$LOG_FILE"

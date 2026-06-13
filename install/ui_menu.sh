@@ -1,8 +1,4 @@
 #!/bin/bash
-# ==========================================================
-# 模块名称: ui_menu.sh
-# 核心功能: 交互式状态机、LBS 地图解析、Telegram 控制中枢配置
-# ==========================================================
 
 do_fetch_map() {
     echo -e "\n[2/7] 正在连线云端，拉取全球节点地图..."
@@ -60,8 +56,7 @@ do_handle_menu() {
 do_interactive_setup() {
     if [ "$UPGRADE_MODE" == "false" ]; then
 
-        # [v4.3.1 重构] 引入有限状态机 (State Machine) 与输入边界防御
-        local step=0
+            local step=0
         while [ $step -lt 4 ]; do
             case $step in
                 0)
@@ -250,7 +245,6 @@ do_interactive_setup() {
 }
 
 do_final_report() {
-    # 注册报文中塞入多宿主弹匣与专属安全 Token
     REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
     
     if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
@@ -303,7 +297,7 @@ do_final_report() {
         else
             echo -e "\n📡 正在向指挥部发送注册暗号..."
             
-            # [修补重点] 必须转义，否则含有下划线的 SAFE_COMM_IP_ESC 在 Telegram Markdown 中会引发 400 Bad Request
+            # 转义下划线以防止 Telegram Markdown 格式解析错误
             SAFE_COMM_IP_ESC=$(echo "$SAFE_COMM_IP" | sed 's/_/\\_/g')
             
             TEXT_MSG="✨ *IP-Sentinel 部署成功！*
@@ -373,7 +367,7 @@ do_show_summary() {
     echo "🗑️ 若未来需卸载，可重新运行本脚本选择[2]或执行: bash ${INSTALL_DIR}/core/uninstall.sh"
     echo "========================================================"
 
-    # 提前固化注册报文，确保即使节点端不配置 TG_TOKEN，也能在终端打印出最新的同步报文以供中枢登记
+    # 构造固化的注册报文，以便在未配置 Telegram 机器人时也可以打印输出
     REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
 
     if [[ -n "$AGENT_TOKEN" ]]; then

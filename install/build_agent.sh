@@ -1,18 +1,10 @@
 #!/bin/bash
 
-# ==========================================================
-# 模块名称: build_agent.sh (Orchestrator 编排大管家)
-# 核心功能: 严格遵循原版 install.sh 判定树时序，实现无损热更新
-# ==========================================================
-
-# 传递中断引信
 trap 'exit 1' INT QUIT TERM
 
-# 激活终端退格自适应，防止 SSH 误触产生 ^H / ^? 控制字符
 stty erase ^H 2>/dev/null || true
 stty erase '^?' 2>/dev/null || true
 
-# 模拟终端物理退格与 ANSI 控制码处理，从数据流层面修正退格污染
 process_backspaces() {
     local input="$1"
     local output=""
@@ -32,8 +24,6 @@ process_backspaces() {
     echo "$output"
 }
 
-# 为了解决 SSH 客户端因终端映射配置差异而导致的退格键转换为控制字符（如 ^H、^?）并破坏白名单及 Token 配置文件的缺陷，
-# 引入统一的输入数据过滤器与二次确认交互逻辑。此机制可在字符解析和二次交互两个维度同时拦截错误输入。
 safe_read_input() {
     local var_name="$1"
     local prompt_msg="$2"
@@ -138,7 +128,6 @@ MODULES=(
     "sys_daemon.sh"
 )
 
-# 1. 串行拉取子模块资产
 for mod in "${MODULES[@]}"; do
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/install/${mod}?t=$(date +%s)" -o "${SECURE_TMP}/${mod}"
     if [ ! -s "${SECURE_TMP}/${mod}" ]; then
@@ -148,39 +137,27 @@ for mod in "${MODULES[@]}"; do
     source "${SECURE_TMP}/${mod}"
 done
 
-# ==========================================================
-# 2. 核心业务原子流 (100% 忠实于原版 install.sh 执行时序)
-# ==========================================================
+do_env_precheck
+do_fetch_version
+do_install_deps
 
-# [环境预检阶段]
-do_env_precheck       # 架构预检、系统级诊断 (原版第 26-55 行)
-do_fetch_version      # 动态解析远端版本约束 (原版第 59-66 行)
-do_install_deps       # 多分支包管理器嗅探与系统补全 (原版第 70-137 行)
+do_fetch_map
+do_handle_menu
 
-# [菜单与策略拦截阶段]
-do_fetch_map          # LBS 地理图谱树预载 (原版第 141-146 行)
-do_handle_menu        # 区分全新安装、平滑升级与一键卸载 (原版第 149-188 行)
+do_clean_env
 
-# [物理清洗阶段]
-do_clean_env          # 幽灵进程抹除、无损清空与数据保护 (原版第 192-225 行)
+do_interactive_setup
 
-# [配置生成阶段 (仅限全新安装)]
-do_interactive_setup  # 逐级锁定战区城市、联控配置、端口探测 (原版第 229-373 行)
+do_network_probe
+do_assemble_fallback
+do_write_config
 
-# [网络雷达与身份装配阶段]
-do_network_probe      # 冗余双栈探测、网卡锁、WARP假公网隔离 (原版第 375-430 行)
-do_assemble_fallback  # 智能多宿主容灾弹匣装填、主键别名分离 (原版第 432-475 行)
-do_write_config       # 固化本地本地 config.conf 档案 (原版第 477-512 行)
+do_smooth_migrate
 
-# [老节点热重载平滑升级阶段 (仅限升级模式)]
-do_smooth_migrate     # 强行覆写、重铸双栈容灾装甲 (原版第 516-590 行)
+do_deploy_core
 
-# [核心引擎原子覆写阶段]
-do_deploy_core        # 双缓冲防变砖下载域、物理覆写核心文件 (原版第 594-620 行)
-
-# [进程守护与首播激活阶段]
-do_inject_daemon      # Systemd/Alpine 看门狗死循环双重注入 (原版第 622-728 行)
-do_final_report       # 首播暗号同步、Markdown防断开下划线发送 (原版第 732-793 行)
-do_show_summary       # 防火墙端口提示、装机量统计、开源 Star 推广 (原版第 795-832 行)
+do_inject_daemon
+do_final_report
+do_show_summary
 
 exit 0
