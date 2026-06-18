@@ -53,6 +53,17 @@ edit_ui() {
         -d "{\"chat_id\":\"$1\",\"message_id\":\"$2\",\"text\":\"$3\",\"parse_mode\":\"Markdown\",\"reply_markup\":{\"inline_keyboard\":$4}}" > /dev/null
 }
 
+log_master_event() {
+    local level="$1"
+    local category="$2"
+    local message="$3"
+    local log_line="[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] [$level] [$category] $message"
+    echo "$log_line"
+    local log_dir="/opt/ip_sentinel/logs"
+    [ -d "$log_dir" ] || mkdir -p "$log_dir"
+    echo "$log_line" >> "${log_dir}/master.log"
+}
+
 execute_sqlite_query() {
     printf ".timeout 5000\n%s\n" "$1" | sqlite3 "$DB_FILE"
 }
@@ -107,7 +118,9 @@ dispatch_agent_request() {
         if [ -n "$current_ip" ]; then
             local request_url=$(generate_signed_url "$current_ip" "$agent_port" "$request_path" "$request_query" "$target_node")
             
+            log_master_event "INFO" "Dispatcher" "Sending signed request to $current_ip:$agent_port$request_path. Node: $target_node"
             request_result=$(curl -k -s --connect-timeout 4 -m 12 "$request_url" || echo "FAILED")
+            log_master_event "INFO" "Dispatcher" "Response from $current_ip: $request_result"
             if [ "$request_result" != "FAILED" ] && [ -n "$request_result" ]; then
                 echo "$request_result"
                 return
@@ -152,12 +165,15 @@ while true; do
             CHAT_ID=$(echo "$UPDATE" | jq -r '.message.chat.id // .callback_query.message.chat.id')
                 CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
             
+            callback_payload=$(echo "$UPDATE" | jq -r '.message.text // .callback_query.data')
+
             # 校验管理者 CHAT_ID
             if [[ -n "$ALLOWED_CHAT_ID" ]] && [[ "$CHAT_ID" != "$ALLOWED_CHAT_ID" ]]; then
+                log_master_event "WARN" "Security" "Message rejected: Sender CHAT_ID '$CHAT_ID' is not ALLOWED_CHAT_ID '$ALLOWED_CHAT_ID'. Content: '$callback_payload'"
                 continue
             fi
             
-            callback_payload=$(echo "$UPDATE" | jq -r '.message.text // .callback_query.data')
+            log_master_event "INFO" "Receiver" "Received command from CHAT_ID '$CHAT_ID'. Payload: '$callback_payload'"
 
                 callback_query_id=$(echo "$UPDATE" | jq -r '.callback_query.id // empty')
             callback_message_id=$(echo "$UPDATE" | jq -r '.callback_query.message.message_id // empty')

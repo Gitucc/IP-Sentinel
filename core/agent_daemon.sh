@@ -104,6 +104,20 @@ def clean_used_signs():
     for s in expired:
         del USED_SIGNS[s]
 
+def write_agent_log(msg_text):
+    now_str = time.strftime('%Y-%m-%d %H:%M:%S')
+    log_line = f"[{now_str} UTC] [SECURITY WARNING] {msg_text}\n"
+    sys.stderr.write(log_line)
+    sys.stderr.flush()
+    log_dir = '/opt/ip_sentinel/logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+    try:
+        with open(os.path.join(log_dir, 'sentinel.log'), 'a', encoding='utf-8') as lf:
+            lf.write(log_line)
+    except Exception:
+        pass
+
 local_agent_token = ""
 chat_id_token = ""
 if os.path.exists('/opt/ip_sentinel/config.conf'):
@@ -133,6 +147,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         req_sign = query.get('sign', [''])[0]
         
         if not req_t or not req_sign:
+            write_agent_log(f"Rejected request: Missing Signature or Timestamp. Path: {req_path}")
             self.send_response(401)
             self.end_headers()
             self.wfile.write(b"401 Unauthorized: Missing Signature\n")
@@ -142,11 +157,13 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
             current_time = int(time.time())
             # 校验时间戳防重放 (±60秒窗口)
             if abs(current_time - int(req_t)) > 60:
+                write_agent_log(f"Rejected request: Timestamp expired. Path: {req_path}, t: {req_t}, Server t: {current_time}")
                 self.send_response(401)
                 self.end_headers()
                 self.wfile.write(b"401 Unauthorized: Request Expired\n")
                 return
         except ValueError:
+            write_agent_log(f"Rejected request: Invalid Timestamp. Path: {req_path}, t: {req_t}")
             self.send_response(401)
             self.end_headers()
             return
@@ -154,6 +171,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         # 登记签名以防重放
         clean_used_signs()
         if req_sign in USED_SIGNS:
+            write_agent_log(f"Rejected request: Replay Attack Detected. Path: {req_path}, Sign: {req_sign}")
             self.send_response(401)
             self.end_headers()
             self.wfile.write(b"401 Unauthorized: Replay Attack Detected\n")
@@ -176,6 +194,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         expected_sign = hmac.new(AUTH_TOKEN.encode('utf-8'), msg, hashlib.sha256).hexdigest()
         
         if not hmac.compare_digest(expected_sign, req_sign):
+            write_agent_log(f"Rejected request: Signature Mismatch. Path: {req_path}, Expected sign: {expected_sign}, Received sign: {req_sign}, Payload: {msg.decode('utf-8', errors='ignore')}")
             self.send_response(401)
             self.end_headers()
             self.wfile.write(b"401 Unauthorized: Signature Mismatch\n")
@@ -431,6 +450,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 
                 import re
                 if not re.match(r'^https://[a-zA-Z0-9\-\.\/_]+$', repo_url) or ';' in repo_url or '`' in repo_url:
+                    write_agent_log(f"OTA rejected: Malicious Repository URL Detected! URL: {repo_url}")
                     self.send_response(400)
                     self.end_headers()
                     self.wfile.write(b"400 Bad Request: Malicious Repository URL Detected\n")
