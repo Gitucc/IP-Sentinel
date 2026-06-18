@@ -131,7 +131,8 @@ if os.path.exists('/opt/ip_sentinel/config.conf'):
 
 # 通信凭证双重验证，若均未配置则退出以保障安全
 if not local_agent_token and not chat_id_token:
-    print("Error: Comm credentials (AGENT_TOKEN and CHAT_ID) are missing. Agent exit.")
+    sys.stderr.write("Error: Comm credentials (AGENT_TOKEN and CHAT_ID) are missing. Agent exit.\n")
+    sys.stderr.flush()
     sys.exit(1)
     
 AUTH_TOKEN = local_agent_token if local_agent_token else chat_id_token
