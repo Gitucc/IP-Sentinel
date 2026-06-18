@@ -118,7 +118,7 @@ dispatch_agent_request() {
         if [ -n "$current_ip" ]; then
             local request_url=$(generate_signed_url "$current_ip" "$agent_port" "$request_path" "$request_query" "$target_node")
             
-            log_master_event "INFO" "Dispatcher" "Sending signed request to $current_ip:$agent_port$request_path. Node: $target_node"
+            log_master_event "INFO" "Dispatcher" "Sending signed request: $request_url. Node: $target_node"
             request_result=$(curl -k -s --connect-timeout 4 -m 12 "$request_url" || echo "FAILED")
             log_master_event "INFO" "Dispatcher" "Response from $current_ip: $request_result"
             if [ "$request_result" != "FAILED" ] && [ -n "$request_result" ]; then

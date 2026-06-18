@@ -147,7 +147,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         req_sign = query.get('sign', [''])[0]
         
         if not req_t or not req_sign:
-            write_agent_log(f"Rejected request: Missing Signature or Timestamp. Path: {req_path}")
+            write_agent_log(f"Rejected request: Missing Signature or Timestamp. Path: {req_path}, t: {req_t}, sign: {req_sign}")
             self.send_response(401)
             self.end_headers()
             self.wfile.write(b"401 Unauthorized: Missing Signature\n")
@@ -157,13 +157,13 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
             current_time = int(time.time())
             # 校验时间戳防重放 (±60秒窗口)
             if abs(current_time - int(req_t)) > 60:
-                write_agent_log(f"Rejected request: Timestamp expired. Path: {req_path}, t: {req_t}, Server t: {current_time}")
+                write_agent_log(f"Rejected request: Timestamp expired. Path: {req_path}, t: {req_t}, Server t: {current_time}, Received sign: {req_sign}")
                 self.send_response(401)
                 self.end_headers()
                 self.wfile.write(b"401 Unauthorized: Request Expired\n")
                 return
         except ValueError:
-            write_agent_log(f"Rejected request: Invalid Timestamp. Path: {req_path}, t: {req_t}")
+            write_agent_log(f"Rejected request: Invalid Timestamp. Path: {req_path}, t: {req_t}, Received sign: {req_sign}")
             self.send_response(401)
             self.end_headers()
             return
