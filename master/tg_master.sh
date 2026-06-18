@@ -745,6 +745,8 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                         
                         if [ "$RESPONSE" == "FAILED" ]; then
                             TEXT_RES="❌ OTA 指令下发彻底失败！链路异常或严禁使用 HTTP 降级通讯。"
+                        elif [[ "$RESPONSE" == *"400"* ]]; then
+                            TEXT_RES="🚨 **安全熔断**：该节点检测到恶意的 Repository 升级路径，已物理熔断指令下发！"
                         elif [[ "$RESPONSE" == *"403"* ]]; then
                             TEXT_RES="⚠️ **节点拒绝执行**：该节点本地未开启 OTA 权限或运行在官方网关下！"
                         elif [[ "$RESPONSE" == *"401"* ]]; then
@@ -783,6 +785,8 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                         
                         if [ "$RESPONSE" == "FAILED" ]; then
                             TEXT_RES="❌ 指令下发超时或失败！为保护链路安全，已终止通信 (严禁降级为 HTTP)。"
+                        elif [[ "$RESPONSE" == *"400"* ]]; then
+                            TEXT_RES="🚨 **安全熔断**：节点拒绝执行该请求，参数或格式校验未通过！"
                         elif [[ "$RESPONSE" == *"403"* ]]; then
                             TEXT_RES="⚠️ **拒绝执行**：该节点未在本地开启此模块，请检查安装时的配置！"
                         elif [[ "$RESPONSE" == *"401"* ]]; then
