@@ -18,7 +18,7 @@ REGION_JSON_FILE=$(find "${INSTALL_DIR}/data/regions" -name "*.json" 2>/dev/null
 if [ -z "$REGION_JSON_FILE" ] || [ ! -f "$REGION_JSON_FILE" ]; then
     REGION_JSON_FILE="${INSTALL_DIR}/data/regions/${REGION}.json"
     mkdir -p "${INSTALL_DIR}/data/regions"
-    curl -${IP_PREF:-4} -sL "${REPO_RAW_URL}/data/regions/${REGION}.json" -o "$REGION_JSON_FILE"
+    curl -${IP_PREF:-4} -sL --connect-timeout 8 -m 15 "${REPO_RAW_URL}/data/regions/${REGION}.json" -o "$REGION_JSON_FILE"
 fi
 
 if [ -f "$REGION_JSON_FILE" ]; then

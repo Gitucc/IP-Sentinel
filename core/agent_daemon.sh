@@ -7,6 +7,11 @@ IP_CACHE="${INSTALL_DIR}/core/.last_ip"
 [ ! -f "$CONFIG_FILE" ] && exit 1
 source "$CONFIG_FILE"
 
+if [ -z "$AGENT_TOKEN" ] && [ -z "$CHAT_ID" ]; then
+    echo "Error: Comm credentials (AGENT_TOKEN and CHAT_ID) are missing. Agent exit." >&2
+    exit 1
+fi
+
 [ -z "$TG_TOKEN" ] || [ -z "$CHAT_ID" ] && exit 0
 
 AGENT_PORT=${AGENT_PORT:-9527}

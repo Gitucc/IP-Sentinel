@@ -71,8 +71,12 @@ fi
 
 if [ -n "$TARGET_MOD" ] && [ -x "${INSTALL_DIR}/core/${TARGET_MOD}" ]; then
     log "SYSTEM" "INFO" "命中触发条件，加载并执行子模块: ${MOD_NAME}"
-    # 降低优先级运行子模块，不继承排他锁
-    nice -n 19 bash "${INSTALL_DIR}/core/${TARGET_MOD}" 200>&-
+    # 降低优先级运行子模块，限制最大运行时间为 30 分钟防假死锁
+    if command -v timeout >/dev/null 2>&1; then
+        nice -n 19 timeout 1800 bash "${INSTALL_DIR}/core/${TARGET_MOD}" 200>&-
+    else
+        nice -n 19 bash "${INSTALL_DIR}/core/${TARGET_MOD}" 200>&-
+    fi
 else
     log "SYSTEM" "ERROR" "配置了模块 ${MOD_NAME}，但未找到对应的可执行脚本: ${TARGET_MOD}"
 fi
