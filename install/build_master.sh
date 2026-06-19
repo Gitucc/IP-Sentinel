@@ -2,6 +2,11 @@
 
 trap 'exit 1' INT QUIT TERM
 
+INSTALL_LOG="/opt/ip_sentinel/logs/install_master.log"
+mkdir -p "/opt/ip_sentinel/logs"
+exec > >(tee -a "$INSTALL_LOG") 2>&1
+echo "=== [$(date '+%Y-%m-%d %H:%M:%S')] IP-Sentinel Master 部署流程开始 ==="
+
 MODULES=(
     "env_setup.sh"
     "master_setup.sh"

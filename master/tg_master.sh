@@ -191,6 +191,7 @@ while true; do
 
                 if [ -n "$NODE_ID" ] && [ -n "$SCORE" ]; then
                     execute_sqlite_query "INSERT INTO ip_trend_log (node_name, scam_score, goog_status, nf_status, gpt_status) VALUES ('$NODE_ID', '$SCORE', '$GOOG_ST', '$NF_ST', '$GPT_ST');"
+                    log_master_event "INFO" "Database" "Node '$NODE_ID' quality metrics recorded in SQLite (Scam: $SCORE, Google: $GOOG_ST, Netflix: $NF_ST, GPT: $GPT_ST)"
                     
                     if [ -n "$callback_query_id" ]; then
                         curl -s --connect-timeout 5 -m 10 -X POST "https://api.telegram.org/bot${TG_TOKEN}/answerCallbackQuery" \
@@ -267,15 +268,18 @@ while true; do
                 # 限制非公网或回环地址以防御 SSRF
                 if [[ "$AGENT_IP" =~ ^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^::1$|^localhost$ ]]; then
                     send_msg "$CHAT_ID" "⛔ **安全过滤**：禁止注册私有或本地回环地址，以防御 SSRF 渗透。"
+                    log_master_event "WARN" "Security" "Registration blocked: Private/loopback IP '$AGENT_IP' from Chat ID '$CHAT_ID'. Node: '$NODE_NAME'"
                     continue
                 fi
                 
                 if [ -z "$NODE_NAME" ] || [ -z "$AGENT_IP" ] || [ -z "$AGENT_PORT" ] || [ -z "$CHAT_ID" ]; then
                     send_msg "$CHAT_ID" "⛔ **安全过滤**：注册数据包校验未通过，注册已拒绝。"
+                    log_master_event "WARN" "Security" "Registration rejected: Invalid register payload format from Chat ID '$CHAT_ID'. Raw: '$registration_record'"
                     continue
                 fi
 
                     execute_sqlite_query "INSERT INTO nodes (chat_id, node_name, agent_ip, agent_port, last_seen, region, node_alias, enable_ota, agent_token) VALUES ('$CHAT_ID', '$NODE_NAME', '$AGENT_IP', '$AGENT_PORT', CURRENT_TIMESTAMP, '$AGENT_REGION', '$NODE_ALIAS', '$AGENT_OTA', '$AGENT_TOKEN') ON CONFLICT(chat_id, node_name) DO UPDATE SET agent_ip='$AGENT_IP', agent_port='$AGENT_PORT', last_seen=CURRENT_TIMESTAMP, region='$AGENT_REGION', node_alias='$NODE_ALIAS', enable_ota='$AGENT_OTA', agent_token='$AGENT_TOKEN';"
+                    log_master_event "INFO" "Database" "Registration successful for Node '$NODE_NAME' ($NODE_ALIAS) at IP $AGENT_IP:$AGENT_PORT, Region: $AGENT_REGION, OTA: $AGENT_OTA"
                 
                     FMT_AGENT_IP=$(echo "$AGENT_IP" | tr '_' ',')
                 MAIN_SHOW_IP=$(echo "$FMT_AGENT_IP" | cut -d',' -f1)
@@ -653,6 +657,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     if [ "$VALID_OWNER" == "1" ]; then
                         execute_sqlite_query "DELETE FROM nodes WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE';"
                         execute_sqlite_query "DELETE FROM ip_trend_log WHERE node_name='$TARGET_NODE';"
+                        log_master_event "INFO" "Database" "Node '$TARGET_NODE' deleted successfully by administrator Chat ID '$CHAT_ID'."
                         
                                     if [ -n "$callback_message_id" ]; then
                             edit_msg "$CHAT_ID" "$callback_message_id" "🗑️ 节点 \`$TARGET_NODE\` 的档案及污染趋势历史已被强行抹除。"
@@ -660,6 +665,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                             send_msg "$CHAT_ID" "🗑️ 节点 \`$TARGET_NODE\` 的档案及历史污染趋势已从中枢彻底销毁！"
                         fi
                     else
+                        log_master_event "WARN" "Security" "Node deletion rejected for '$TARGET_NODE' (Chat ID: $CHAT_ID). Reason: Unauthorized or node not found."
                         if [ -n "$callback_message_id" ]; then
                             edit_msg "$CHAT_ID" "$callback_message_id" "⛔ **安全拦截**：销毁失败。目标节点不存在或您无权越权操作！"
                         else
@@ -700,22 +706,28 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     AGENT_PORT=$(echo "$AGENT_INFO" | cut -d'|' -f2)
 
                     if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
+                        log_master_event "INFO" "Rename" "Initiating rename request for Node '$TARGET_NODE' to '$NEW_ALIAS'"
                         send_msg "$CHAT_ID" "⏳ 正在向 \`$TARGET_NODE\` 下发重命名指令，正在建立加密隧道..."
                         
                                     ALIAS_B64=$(echo -n "$NEW_ALIAS" | base64 | tr -d '\n' | tr '+/' '-_')
                         RESPONSE=$(dispatch_agent_request "$AGENT_IP" "$AGENT_PORT" "/trigger_rename" "b64=${ALIAS_B64}" "$TARGET_NODE")
                         
                         if [ "$RESPONSE" == "FAILED" ]; then
-                            send_msg "$CHAT_ID" "❌ 指令下发超时！为防范劫持风险，已终止请求。"
+                            log_master_event "ERROR" "Rename" "Rename request for Node '$TARGET_NODE' timed out or failed. Response: $RESPONSE"
+                            send_msg "$CHAT_ID" "❌ 指令下发超时！为防范劫持风险，已终止请求."
                         elif [[ "$RESPONSE" == *"401"* ]]; then
+                            log_master_event "WARN" "Rename" "Rename request for Node '$TARGET_NODE' failed due to signature mismatch (401 Unauthorized)."
                             send_msg "$CHAT_ID" "🚨 **鉴权失败**：中枢与节点的通信凭证 (Token) 不匹配，指令已被节点强行熔断！%0A%0A💡 *请在节点重新运行安装脚本，将生成的最新 \`#REGISTER#\` 注册指令发送给 Bot 进行同步！*"
                         elif [[ "$RESPONSE" == *"Action Accepted"* ]]; then
                             execute_sqlite_query "UPDATE nodes SET node_alias='$NEW_ALIAS' WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE';"
+                            log_master_event "INFO" "Rename" "Rename request for Node '$TARGET_NODE' accepted by Agent. Alias updated in database to '$NEW_ALIAS'."
                             send_msg "$CHAT_ID" "✅ 通讯成功！节点别名已下发: \`$NEW_ALIAS\`%0A*(中枢档案已自动刷新，雷达面板已同步)*"
                         else
+                            log_master_event "ERROR" "Rename" "Rename request for Node '$TARGET_NODE' rejected by Agent. Response: $RESPONSE"
                             send_msg "$CHAT_ID" "⚠️ 节点拒绝了请求，请确保 Agent 已更新至 v3.5.2%0A(回传信息: \`${RESPONSE}\`)"
                         fi
                     else
+                        log_master_event "ERROR" "Rename" "Rename request for Node '$TARGET_NODE' aborted. Reason: Communications address not found in SQLite."
                         send_msg "$CHAT_ID" "❌ 数据库中未找到该节点的通讯地址。"
                     fi
                     ;;
@@ -735,6 +747,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     AGENT_PORT=$(echo "$AGENT_INFO" | cut -d'|' -f2)
 
                             if [ -n "$AGENT_IP" ] && [ -n "$AGENT_PORT" ]; then
+                        log_master_event "INFO" "OTA" "Triggering OTA upgrade for Node '$TARGET_NODE'"
                         if [ -n "$callback_message_id" ]; then
                             edit_msg "$CHAT_ID" "$callback_message_id" "⏳ 正在向 \`$TARGET_NODE\` 发送 OTA 触发报文..."
                         else
@@ -744,14 +757,19 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                         RESPONSE=$(dispatch_agent_request "$AGENT_IP" "$AGENT_PORT" "/trigger_ota" "" "$TARGET_NODE")
                         
                         if [ "$RESPONSE" == "FAILED" ]; then
+                            log_master_event "ERROR" "OTA" "OTA trigger failed for Node '$TARGET_NODE'. Response: $RESPONSE"
                             TEXT_RES="❌ OTA 指令下发彻底失败！链路异常或严禁使用 HTTP 降级通讯。"
                         elif [[ "$RESPONSE" == *"400"* ]]; then
+                            log_master_event "WARN" "OTA" "OTA trigger rejected for Node '$TARGET_NODE'. Reason: Malicious Repository (400 Bad Request)."
                             TEXT_RES="🚨 **安全熔断**：该节点检测到恶意的 Repository 升级路径，已物理熔断指令下发！"
                         elif [[ "$RESPONSE" == *"403"* ]]; then
+                            log_master_event "WARN" "OTA" "OTA trigger rejected for Node '$TARGET_NODE'. Reason: OTA disabled on Agent or Master Gateway restriction (403 Forbidden)."
                             TEXT_RES="⚠️ **节点拒绝执行**：该节点本地未开启 OTA 权限或运行在官方网关下！"
                         elif [[ "$RESPONSE" == *"401"* ]]; then
+                            log_master_event "WARN" "OTA" "OTA trigger rejected for Node '$TARGET_NODE'. Reason: Token mismatch (401 Unauthorized)."
                             TEXT_RES="🚨 **鉴权失败**：中枢与节点的通信凭证 (Token) 不匹配，指令已被节点强行熔断！%0A%0A💡 *请在节点重新运行安装脚本，将生成的最新 \`#REGISTER#\` 注册指令发送给 Bot 进行同步！*"
                         else
+                            log_master_event "INFO" "OTA" "OTA trigger accepted by Node '$TARGET_NODE'. Response: $RESPONSE"
                             TEXT_RES="✅ OTA (TLS加密) 触发成功！节点正在后台执行拉取重构..."
                         fi
                         

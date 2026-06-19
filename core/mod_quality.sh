@@ -2,6 +2,20 @@
 
 source /opt/ip_sentinel/config.conf
 
+INSTALL_DIR="/opt/ip_sentinel"
+LOG_FILE="${INSTALL_DIR}/logs/sentinel.log"
+log() {
+    local level=$1
+    local msg=$2
+    local local_ver="${AGENT_VERSION:-未知}"
+    mkdir -p "${INSTALL_DIR}/logs"
+    local core_msg=$(printf "[v%-5s] [%-5s] [%-7s] [%s] %s" "$local_ver" "$level" "Quality" "$REGION_CODE" "$msg")
+    echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $core_msg" >> "$LOG_FILE"
+    echo "$core_msg"
+}
+
+log "INFO" "开始执行网络质量/深海声呐测试..."
+
 DYNAMIC_IP_PREF="${IP_PREF:-4}"
 PROBE_ARGS=("-y" "-j" "-f") # 默认注入: 自动确认、JSON格式、明文无掩码IP
 
@@ -9,9 +23,10 @@ if [[ -n "$BIND_IP" && "$BIND_IP" =~ ^[0-9a-fA-F:\[\]\.]+$ ]]; then
     RAW_BIND_IP=$(echo "$BIND_IP" | tr -d '[]')
     # 探测网卡存活状态，防止 IP 漂移导致报错
     if ip addr show 2>/dev/null | grep -qw "$RAW_BIND_IP"; then
-                PROBE_ARGS+=("-i" "$RAW_BIND_IP")
+        log "INFO" "检测网卡存活状态，绑定 IP: $RAW_BIND_IP"
+        PROBE_ARGS+=("-i" "$RAW_BIND_IP")
         
-                if [[ "$RAW_BIND_IP" == *":"* ]]; then
+        if [[ "$RAW_BIND_IP" == *":"* ]]; then
             DYNAMIC_IP_PREF="6"
         elif [[ "$RAW_BIND_IP" == *"."* ]]; then
             DYNAMIC_IP_PREF="4"
@@ -28,18 +43,25 @@ if [ -f "$PROBE_SCRIPT" ] && ! grep -q "xykt" "$PROBE_SCRIPT" 2>/dev/null; then
 fi
 
 if [ ! -s "$PROBE_SCRIPT" ]; then
-        curl -sL -m 10 "https://raw.githubusercontent.com/xykt/IPQuality/main/ip.sh" -o "$PROBE_SCRIPT" 2>/dev/null
+    log "INFO" "本地 ip_probe.sh 校验未通过或缺失，开始拉取安装包..."
+    curl -sL -m 10 "https://raw.githubusercontent.com/xykt/IPQuality/main/ip.sh" -o "$PROBE_SCRIPT" 2>/dev/null
     
-        if ! grep -q "xykt" "$PROBE_SCRIPT" 2>/dev/null; then
+    if ! grep -q "xykt" "$PROBE_SCRIPT" 2>/dev/null; then
         rm -f "$PROBE_SCRIPT" 2>/dev/null
+        log "INFO" "首选源拉取失败，尝试备用源 IP.Check.Place..."
         curl -sL -m 15 "https://IP.Check.Place" -o "$PROBE_SCRIPT" 2>/dev/null
     fi
     chmod +x "$PROBE_SCRIPT" 2>/dev/null
 fi
 
+if [ ! -s "$PROBE_SCRIPT" ] || ! grep -q "xykt" "$PROBE_SCRIPT" 2>/dev/null; then
+    log "ERROR" "ip_probe.sh 下载失败，退出任务。"
+    exit 1
+fi
+
 preflight_check() {
     local curl_args=("-s" "-m" "4")
-        for ((i=1; i<=$#; i++)); do
+    for ((i=1; i<=$#; i++)); do
         if [[ "${!i}" == "-i" ]]; then
             local next=$((i+1))
             curl_args+=("--interface" "${!next}")
@@ -49,22 +71,24 @@ preflight_check() {
             curl_args+=("-6")
         fi
     done
-        curl "${curl_args[@]}" "https://www.cloudflare.com/cdn-cgi/trace" >/dev/null 2>&1
+    curl "${curl_args[@]}" "https://www.cloudflare.com/cdn-cgi/trace" >/dev/null 2>&1
     return $?
 }
 
 FINAL_ARGS=()
 if preflight_check "${PROBE_ARGS[@]}"; then
-        FINAL_ARGS=("${PROBE_ARGS[@]}")
+    FINAL_ARGS=("${PROBE_ARGS[@]}")
 else
-        FALLBACK_ARGS=("-y" "-j" "-${DYNAMIC_IP_PREF}")
+    log "WARN" "公网 IP / 绑定网口连通性校验失败，正在尝试 Fallback 参数..."
+    FALLBACK_ARGS=("-y" "-j" "-${DYNAMIC_IP_PREF}")
     if preflight_check "${FALLBACK_ARGS[@]}"; then
         FINAL_ARGS=("${FALLBACK_ARGS[@]}")
     else
-                FINAL_ARGS=("-y" "-j")
+        FINAL_ARGS=("-y" "-j")
     fi
 fi
 
+log "INFO" "启动底层探针，执行参数: ${FINAL_ARGS[*]}"
 RAW_OUTPUT=$(timeout 300 bash "$PROBE_SCRIPT" "${FINAL_ARGS[@]}" 2>/dev/null)
 JSON_DATA="{${RAW_OUTPUT#*\{}"
 ESC=$(printf '\033')
@@ -72,6 +96,7 @@ JSON_DATA=$(printf "%s" "$JSON_DATA" | sed -e "s/${ESC}\[[0-9;]*[a-zA-Z]//g" -e 
 IP_ADDR=$(echo "$JSON_DATA" | jq -r '.Head.IP // empty' 2>/dev/null)
 
 if [ -z "$IP_ADDR" ]; then
+    log "ERROR" "探针未返回有效数据，数据解析受阻，已向 Bot 发送报警消息。"
     curl -s -X POST "${TG_API_URL}" \
         -d "chat_id=${CHAT_ID}" \
         -d "parse_mode=Markdown" \
@@ -102,6 +127,8 @@ FRAUD_RISK=$(echo "$JSON_DATA" | jq -r '.Score.ipapi // "0%"' 2>/dev/null)
 [ "$IP2L_SCORE" == "null" ] || [ -z "$IP2L_SCORE" ] && IP2L_SCORE="N/A"
 [ "$FRAUD_RISK" == "null" ] || [ -z "$FRAUD_RISK" ] && FRAUD_RISK="N/A"
 
+log "INFO" "探针探测成功，获取公网 IP: $IP_ADDR，ASN: AS$ASN ($ORG)，Scamalytics 评分: $SCAM_SCORE"
+
 IS_PROXY="🟢 干净"
 if echo "$JSON_DATA" | jq -e '.Factor.Proxy | to_entries | any(.value == true)' >/dev/null 2>&1 || \
    echo "$JSON_DATA" | jq -e '.Factor.VPN | to_entries | any(.value == true)' >/dev/null 2>&1; then
@@ -116,9 +143,9 @@ parse_media() {
     if [[ "$status" == *"解锁"* ]]; then
         echo "🟢 ${reg} (${type})"
     elif [[ "$status" == *"仅"* ]] || [[ "$status" == *"机房"* ]] || [[ "$status" == *"待支持"* ]]; then
-                echo "🟡 ${status} ${reg}"
+        echo "🟡 ${status} ${reg}"
     elif [[ "$status" == *"屏蔽"* ]] || [[ "$status" == *"失败"* ]] || [[ "$status" == *"中国"* ]] || [[ "$status" == *"禁"* ]]; then
-                echo "🔴 ${status}"
+        echo "🔴 ${status}"
     else
         echo "⚪ ${status}"
     fi
@@ -142,7 +169,7 @@ DNS_MARK=$(echo "$JSON_DATA" | jq -r '.Mail.DNSBlacklist.Marked // "0"' 2>/dev/n
 
 WARNING_MSG=""
 if [[ "$RAW_YT_REG" == "CN" ]] || [[ "$RAW_YT_STAT" == *"中国"* ]]; then
-        WARNING_MSG=$'\n🚨 **[高危] 该节点已被 Google 判定为中国大陆 (送中)！**\n'
+    WARNING_MSG=$'\n🚨 **[高危] 该节点已被 Google 判定为中国大陆 (送中)！**\n'
 fi
 
 LOCAL_VER="${AGENT_VERSION:-未知}"
@@ -213,4 +240,9 @@ JSON_PAYLOAD=$(jq -n \
     }
   }')
 
-curl -s -X POST "${TG_API_URL}" -H "Content-Type: application/json" -d "$JSON_PAYLOAD" >/dev/null
+RESPONSE_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API_URL}" -H "Content-Type: application/json" -d "$JSON_PAYLOAD")
+if [ "$RESPONSE_CODE" -eq 200 ]; then
+    log "INFO" "深海声呐体检报告已发送至 Telegram。"
+else
+    log "ERROR" "深海声呐体检报告发送失败，Telegram API 响应状态码: $RESPONSE_CODE"
+fi

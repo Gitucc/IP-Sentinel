@@ -5,6 +5,11 @@ trap 'exit 1' INT QUIT TERM
 stty erase ^H 2>/dev/null || true
 stty erase '^?' 2>/dev/null || true
 
+INSTALL_LOG="/opt/ip_sentinel/logs/install.log"
+mkdir -p "/opt/ip_sentinel/logs"
+exec > >(tee -a "$INSTALL_LOG") 2>&1
+echo "=== [$(date '+%Y-%m-%d %H:%M:%S')] IP-Sentinel Agent 部署流程开始 ==="
+
 process_backspaces() {
     local input="$1"
     local output=""
