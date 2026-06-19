@@ -26,12 +26,7 @@ log() {
     
     local core_msg=$(printf "[v%-5s] [%-5s] [%-7s] [%s] %s" "$local_ver" "$level" "$module" "$REGION_CODE" "$msg")
     echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $core_msg" >> "$LOG_FILE"
-
-    if command -v logger >/dev/null 2>&1; then
-        logger -t ip-sentinel "$core_msg"
-    else
-        echo "$core_msg"
-    fi
+    echo "$core_msg"
 }
 export -f log
 export CONFIG_FILE INSTALL_DIR

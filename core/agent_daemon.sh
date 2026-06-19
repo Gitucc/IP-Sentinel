@@ -150,6 +150,16 @@ def log_to_sentinel(module, level, msg):
     except Exception:
         pass
 
+def run_background_cmd(cmd):
+    import shutil
+    if shutil.which("systemd-cat"):
+        full_cmd = f"nohup {cmd} 2>&1 | systemd-cat -t ip-sentinel &"
+    elif shutil.which("logger"):
+        full_cmd = f"nohup {cmd} 2>&1 | logger -t ip-sentinel &"
+    else:
+        full_cmd = f"nohup {cmd} 2>> /opt/ip_sentinel/logs/sentinel.log >/dev/null &"
+    os.system(full_cmd)
+
 local_agent_token = ""
 chat_id_token = ""
 if os.path.exists('/opt/ip_sentinel/config.conf'):
@@ -243,7 +253,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
                 self.wfile.write(b"Action Accepted: runner\n")
-                os.system("nohup bash /opt/ip_sentinel/core/runner.sh >/dev/null 2>&1 &")
+                run_background_cmd("bash /opt/ip_sentinel/core/runner.sh")
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -255,7 +265,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
                 self.wfile.write(b"Action Accepted: mod_google\n")
-                os.system("nohup bash /opt/ip_sentinel/core/mod_google.sh >/dev/null 2>&1 &")
+                run_background_cmd("bash /opt/ip_sentinel/core/mod_google.sh")
             else:
                 self.send_response(403)
                 self.send_header("Content-type", "text/plain")
@@ -269,7 +279,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
                 self.wfile.write(b"Action Accepted: mod_trust\n")
-                os.system("nohup bash /opt/ip_sentinel/core/mod_trust.sh >/dev/null 2>&1 &")
+                run_background_cmd("bash /opt/ip_sentinel/core/mod_trust.sh")
             else:
                 self.send_response(403)
                 self.send_header("Content-type", "text/plain")
@@ -282,7 +292,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Action Accepted: tg_report\n")
-            os.system("nohup bash /opt/ip_sentinel/core/tg_report.sh >/dev/null 2>&1 &")
+            run_background_cmd("bash /opt/ip_sentinel/core/tg_report.sh")
 
         elif req_path == '/trigger_log':
             self.send_response(200)
@@ -346,7 +356,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
             
             if os.path.exists('/opt/ip_sentinel/core/mod_quality.sh'):
                 log_to_sentinel("Quality", "START", "通过 Webhook 外部手动触发网络质量自检任务...")
-                os.system("nohup bash /opt/ip_sentinel/core/mod_quality.sh >/dev/null 2>&1 &")
+                run_background_cmd("bash /opt/ip_sentinel/core/mod_quality.sh")
 
         elif req_path == '/trigger_rename':
             b64_alias = query.get('b64', [''])[0]

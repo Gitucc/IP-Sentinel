@@ -13,19 +13,14 @@ fi
 # 若未定义 log 函数，则定义 fallback 函数
 if ! type log >/dev/null 2>&1; then
     log() {
-                local local_ver="${AGENT_VERSION:-未知}"
+        local local_ver="${AGENT_VERSION:-未知}"
         
         mkdir -p "${INSTALL_DIR}/logs"
     
         # 使用 UTC 时间以统一日志时间戳
         local core_msg=$(printf "[v%-5s] [%-5s] [%-7s] [%s] %s" "$local_ver" "$2" "$1" "$REGION_CODE" "$3")
         echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $core_msg" >> "${INSTALL_DIR}/logs/sentinel.log"
-
-                if command -v logger >/dev/null 2>&1; then
-            logger -t ip-sentinel "$core_msg"
-        else
-            echo "$core_msg"
-        fi
+        echo "$core_msg"
     }
 fi
 
