@@ -11,14 +11,38 @@ source "$CONFIG_FILE"
 REGION=${REGION_CODE:-"US"}
 LOG_FILE="${INSTALL_DIR}/logs/sentinel.log"
 
-# 查找专属 json 区域白名单文件
+log_msg() {
+    local TYPE=$1
+    local MSG=$2
+    local TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+    local local_ver="${AGENT_VERSION:-未知}"
+
+    printf "[%s] [v%-5s] [%-5s] [Trust  ] [%s] %s\n" \
+        "$TIME" "$local_ver" "$TYPE" "$REGION" "$MSG" | tee -a "$LOG_FILE"
+}
+
 REGION_JSON_FILE=$(find "${INSTALL_DIR}/data/regions" -name "*.json" 2>/dev/null | head -n 1)
 
-# 若本地 json 异常，回退拉取云端通用大区配置
+# Dynamic fallback configuration: remote files are nested under COUNTRY/STATE/CITY.json.
+# We query map.json to dynamically locate the default city of the target country.
 if [ -z "$REGION_JSON_FILE" ] || [ ! -f "$REGION_JSON_FILE" ]; then
-    REGION_JSON_FILE="${INSTALL_DIR}/data/regions/${REGION}.json"
     mkdir -p "${INSTALL_DIR}/data/regions"
-    curl -${IP_PREF:-4} -sL --connect-timeout 8 -m 15 "${REPO_RAW_URL}/data/regions/${REGION}.json" -o "$REGION_JSON_FILE"
+    
+    if command -v jq >/dev/null 2>&1 && [ -f "${INSTALL_DIR}/data/map.json" ]; then
+        RESOLVED_PATH=$(jq -r --arg c "$REGION" '.continents[].countries[] | select(.id==$c) | .states[0] as $s | "\($s.id)/\($s.cities[0].id)"' "${INSTALL_DIR}/data/map.json" 2>/dev/null)
+        if [ -n "$RESOLVED_PATH" ] && [ "$RESOLVED_PATH" != "null/null" ]; then
+            REGION_JSON_FILE="${INSTALL_DIR}/data/regions/${REGION}/${RESOLVED_PATH}.json"
+            mkdir -p "$(dirname "$REGION_JSON_FILE")"
+            curl -${IP_PREF:-4} -sL --connect-timeout 8 -m 15 "${REPO_RAW_URL}/data/regions/${REGION}/${RESOLVED_PATH}.json" -o "$REGION_JSON_FILE"
+        fi
+    fi
+
+    # Final fallback if dynamic resolution fails or download is corrupted
+    if [ ! -f "$REGION_JSON_FILE" ] || [ ! -s "$REGION_JSON_FILE" ]; then
+        REGION_JSON_FILE="${INSTALL_DIR}/data/regions/US/CA/Los_Angeles.json"
+        mkdir -p "${INSTALL_DIR}/data/regions/US/CA"
+        curl -${IP_PREF:-4} -sL --connect-timeout 8 -m 15 "${REPO_RAW_URL}/data/regions/US/CA/Los_Angeles.json" -o "$REGION_JSON_FILE"
+    fi
 fi
 
 if [ -f "$REGION_JSON_FILE" ]; then
@@ -33,16 +57,6 @@ fi
 if [ ${#TRUST_URLS[@]} -eq 0 ]; then
     TRUST_URLS=("https://en.wikipedia.org/wiki/Special:Random" "https://www.apple.com/" "https://www.microsoft.com/")
 fi
-
-log_msg() {
-    local TYPE=$1
-    local MSG=$2
-    local TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
-    local local_ver="${AGENT_VERSION:-未知}"
-
-    printf "[%s] [v%-5s] [%-5s] [Trust  ] [%s] %s\n" \
-        "$TIME" "$local_ver" "$TYPE" "$REGION" "$MSG" | tee -a "$LOG_FILE"
-}
 
 if [ -f "$UA_FILE" ]; then
     mapfile -t UA_POOL < <(grep -v '^$' "$UA_FILE")
@@ -82,16 +96,14 @@ flock -n 200 || {
     exit 0
 }
 
-# 定期清理废弃 Cookie
 find "$COOKIE_DIR" -type f -name "trust_*.txt" -mtime +14 -delete 2>/dev/null || true
 
-# 使用 Bash 数组传参
 CURL_BIND_ARGS=()
 DYNAMIC_IP_PREF="-${IP_PREF:-4}"
 
 if [[ -n "$BIND_IP" && "$BIND_IP" =~ ^[0-9a-fA-F:\.]+$ ]]; then
     RAW_BIND_IP=$(echo "$BIND_IP" | tr -d '[]')
-    # 使用 -Fq 替代 -qw
+    # Use fixed string match -Fq to avoid IPv6 colons being treated as word boundaries by grep.
     if ! ip addr show 2>/dev/null | grep -Fq "$RAW_BIND_IP"; then
         log_msg "WARN " "检测到配置的出口 IP ($RAW_BIND_IP) 已丢失，自动降级为系统默认路由出网！"
         CURL_BIND_ARGS=()
@@ -135,7 +147,7 @@ for ((i=1; i<=STEP_COUNT; i++)); do
         esac
         log_msg "WARN " "动作[$i/$STEP_COUNT]异常 | 底层错误: $HTTP_CODE | 阻拦: ${TARGET_URL:0:40}..."
     else
-        # 扩大 HTTP 状态码容错区间：包含各大骨干 CDN 常见的 20x 及 30x 状态转移
+        # Include HTTP 2xx and 3xx codes to tolerate CDN redirects and caching proxies.
         if [[ "$HTTP_CODE" =~ ^[23] ]]; then
             log_msg "EXEC " "动作[$i/$STEP_COUNT]完成 | 状态: $HTTP_CODE | 注入: ${TARGET_URL:0:40}..."
             ((SUCCESS_INJECT++))

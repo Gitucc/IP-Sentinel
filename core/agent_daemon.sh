@@ -123,6 +123,33 @@ def write_agent_log(msg_text):
     except Exception:
         pass
 
+def log_to_sentinel(module, level, msg):
+    config = {}
+    if os.path.exists('/opt/ip_sentinel/config.conf'):
+        try:
+            with open('/opt/ip_sentinel/config.conf', 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    line = line.strip()
+                    if '=' in line and not line.startswith('#'):
+                        k, v = line.split('=', 1)
+                        config[k.strip()] = v.strip('"\'')
+        except Exception:
+            pass
+    now_str = time.strftime('%Y-%m-%d %H:%M:%S')
+    local_ver = config.get('AGENT_VERSION', '未知')
+    region_code = config.get('REGION_CODE', 'US')
+    log_line = f"[{now_str} UTC] [v{local_ver:<5}] [{level:<5}] [{module:<7}] [{region_code}] {msg}\n"
+    sys.stderr.write(log_line)
+    sys.stderr.flush()
+    log_dir = '/opt/ip_sentinel/logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+    try:
+        with open(os.path.join(log_dir, 'sentinel.log'), 'a', encoding='utf-8') as lf:
+            lf.write(log_line)
+    except Exception:
+        pass
+
 local_agent_token = ""
 chat_id_token = ""
 if os.path.exists('/opt/ip_sentinel/config.conf'):
@@ -211,6 +238,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         
         if req_path == '/trigger_run':
             if os.path.exists('/opt/ip_sentinel/core/runner.sh'):
+                log_to_sentinel("SYSTEM", "INFO", "通过 Webhook 外部唤醒全局巡逻调度程序...")
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
@@ -222,6 +250,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 
         elif req_path == '/trigger_google':
             if os.path.exists('/opt/ip_sentinel/core/mod_google.sh'):
+                log_to_sentinel("Google", "START", "通过 Webhook 外部手动触发 Google 区域纠偏任务...")
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
@@ -235,6 +264,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
 
         elif req_path == '/trigger_trust':
             if os.path.exists('/opt/ip_sentinel/core/mod_trust.sh'):
+                log_to_sentinel("Trust", "START", "通过 Webhook 外部手动触发 IP 信用净化任务...")
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
@@ -247,6 +277,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b"403 Forbidden: Trust Module Disabled\n")
 
         elif req_path == '/trigger_report':
+            log_to_sentinel("Report", "START", "通过 Webhook 外部手动触发战报生成与发送...")
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
             self.end_headers()
@@ -314,6 +345,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"Action Accepted: trigger_quality\n")
             
             if os.path.exists('/opt/ip_sentinel/core/mod_quality.sh'):
+                log_to_sentinel("Quality", "START", "通过 Webhook 外部手动触发网络质量自检任务...")
                 os.system("nohup bash /opt/ip_sentinel/core/mod_quality.sh >/dev/null 2>&1 &")
 
         elif req_path == '/trigger_rename':
