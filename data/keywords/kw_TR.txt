@@ -1,3 +1,13 @@
+hatay
+bloomberg ht
+inegöl hava durumu
+hava
+ankara hava durumu
+bolu hava durumu
+zonguldak hava durumu
+düzce hava durumu
+آبوهوا
+yabancı
 tahliye
 personel sağlık
 cumhuriyet gazetesi
@@ -88,13 +98,3 @@ alanya hava durumu
 iyi parti
 paul onuachu
 esenler erokspor
-tesla
-gıda
-hava durumu
-weather
-погода
-آبوهوا
-enflasyon ne zaman açıklanacak
-çay
-stanley
-yasin ramazan başaran
