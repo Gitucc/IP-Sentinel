@@ -1,3 +1,13 @@
+meteo nice
+meteo lyon
+meteo bordeaux
+meteo reims
+toulouse
+giorgia meloni
+weer
+voici
+bourse
+bbc news
 meteo rennes
 meteo strasbourg
 meteo bayonne
@@ -11,7 +21,6 @@ meteo poitiers
 tour de france
 emilie tran nguyen
 tadej pogačar
-weer
 daily mail
 bfm direct
 marion rousse porte jarretelle
@@ -89,12 +98,3 @@ sommet de l'otan
 donation
 chine
 la provence
-portugal vs spain world cup 2026
-équipe de france
-verdict
-résultats bac 2026
-héritage
-enseignant
-mundial
-résultat match coupe du monde
-population active
