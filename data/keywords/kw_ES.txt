@@ -1,9 +1,17 @@
+capdevila
+temps
+погода
+tiempo
+météo
+incendio cinco villas
+gibraltar
+fernando martínez de irujo
+mlb
+uber
 ok
 ok diario
 weer
-temps
 perro
-météo
 las provincias
 diario de burgos
 eduardo camavinga
@@ -22,7 +30,6 @@ diez minutos
 el diario vasco
 diario sur
 deia
-погода
 weather
 santiago niño becerra
 ultimo encierro san fermin 2026
@@ -91,10 +98,3 @@ alfonso muñoz cuenca
 xbox
 dan buettner
 encierros san fermin 2026
-rodri bernardo silva
-meteorología
-doku
-alta velocidad ferroviaria
-picos de europa
-portugal vs spain world cup 2026
-iron bird seed
