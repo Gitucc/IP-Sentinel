@@ -1,3 +1,13 @@
+mynet
+2026 lgs taban puanları
+candan yüceer
+fanatik
+promosyon
+pogoda
+elektrik kesintisi
+hürriyet
+didem arslan yılmaz
+polis
 türkiye kadın millî voleybol takımı
 mahsun kırmızıgül
 japonya
@@ -62,7 +72,6 @@ gişe
 bet365
 otomobil
 mersin deprem
-elektrik kesintisi
 wm spielplan
 istanbul büyükşehir belediye meclisi
 kıbrıs
@@ -79,7 +88,6 @@ altınordu fk
 milli piyango
 bekçi alımı
 milliyet
-hürriyet
 habertürk
 en son haber
 fotomaç
@@ -90,11 +98,3 @@ kap
 vakifbank
 ekonomi
 ebys
-ensonhaber
-merkez bankası
-halk
-hitap
-ali koç
-kıdem tazminatı
-medyabar
-togg
