@@ -1,3 +1,13 @@
+nguyen journaliste
+europe 1
+radio france
+ouest france
+le progres
+meteo 15 jours
+creusot infos
+sporting portugal rc strasbourg
+canada
+ferry
 outlook
 20 minutes
 la chaine meteo
@@ -47,7 +57,6 @@ bbc news
 meteo rennes
 meteo strasbourg
 meteo bayonne
-europe 1
 ascenseur
 sept à huit
 meteo montpellier
@@ -89,12 +98,3 @@ lune
 refus d'obtempérer
 feu die
 demain nous appartient épisode 2246
-astrologie
-rafael van der vaart
-décret
-le parisien
-fire point
-slovaquie
-plan orsec
-route du rhum
-tirage eurodreams
