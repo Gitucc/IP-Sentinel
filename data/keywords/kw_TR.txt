@@ -1,3 +1,13 @@
+sanko üniversitesi
+enver altaylı
+kırıkkale hava durumu
+kayseri hava durumu
+çılgın sayısal loto çekiliş sonuçları
+manisa hava durumu
+rektör
+afyon hava durumu
+clipper endeavor
+wetter
 windy
 openai
 faruk çelik
@@ -72,7 +82,6 @@ kocaeli
 adem yeşilyurt
 voleybol
 giresun hava durumu
-wetter
 ordu hava durumu
 var mısın yok musun esra erol hakan
 kaan ayhan
@@ -89,12 +98,3 @@ düzce hava durumu
 yabancı
 tahliye
 personel sağlık
-cumhuriyet gazetesi
-trendyol
-bloomberg
-şirvan belediye başkanı
-google
-17 temmuz bim kataloğu 2026
-spor haberleri
-memurlar net
-gişe
