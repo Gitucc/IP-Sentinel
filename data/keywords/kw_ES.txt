@@ -1,3 +1,13 @@
+wetter
+pogoda
+tiempo
+clima
+antonio maestre
+pedro pascal
+temps
+universitario - cusco
+fuet
+aire polar maritimo
 santoral hoy
 telemadrid
 sunfish
@@ -9,7 +19,6 @@ alanah pearce
 santa fe - caracas
 barcelona
 banco central europeo
-wetter
 tsla
 weer
 afa
@@ -55,9 +64,7 @@ el mundo deportivo
 ultima hora
 coupe du monde 2026
 capdevila
-temps
 погода
-tiempo
 météo
 incendio cinco villas
 gibraltar
@@ -91,10 +98,3 @@ pitch
 what is a monsoon
 what is the news today
 el correo
-los 40
-sam neill
-tve
-iván barton
-mundial 2030
-encierro san fermin hoy
-san fermines 2026
