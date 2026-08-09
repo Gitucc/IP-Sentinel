@@ -1,3 +1,13 @@
+yalova hava durumu
+آبوهوا
+kocaeli hava durumu
+bartın hava durumu
+weather
+погода
+météo
+balıkesir hava durumu
+çılgın sayısal loto çekilişi
+izmir namaz vakitleri
 iran
 on numara sonuçları
 meclis
@@ -10,7 +20,6 @@ swimming
 sports
 cevdet yılmaz
 süper loto çekilişi
-kocaeli hava durumu
 masterchef ana kadroya giren yarışmacı
 hutbe
 konya namaz vakitleri
@@ -89,12 +98,3 @@ samsun hava durumu
 mazota zam
 sermaye artırımı
 özkan yalım
-borsa
-samsung galaxy s26 fe
-paros
-erdal beşikçioğlu
-kayseri hava durumu
-denizli haber
-dursun özbek
-burak çelik
-personel sağlık
