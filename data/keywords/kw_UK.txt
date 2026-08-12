@@ -1,3 +1,13 @@
+hotels
+flights
+time
+concerts
+travel
+sports
+games
+zilla fatu
+mcdonald's
+delivery
 powerball results
 elina svitolina
 funeral director
@@ -10,15 +20,12 @@ assassins creed black flag sequel
 islam makhachev
 alexandria ocasio-cortez
 solar eclipses glasses
-flights
-games
 events
 vanguard
 alexandra eala
 naomi osaka
 flamengo vs vitória
 joao fonseca
-travel
 schools
 swimming
 jobs
@@ -29,7 +36,6 @@ inter miami vs c.f. monterrey standings
 artificial intelligence news
 ronaldo
 cycling
-concerts
 music
 movies
 boylesports
@@ -76,7 +82,6 @@ hunter green
 wealth tax
 brent crude price
 emma paton
-delivery
 man utd transfer news
 pakistan vs sri lanka
 football transfer news arsenal
@@ -93,8 +98,3 @@ el nino california shark activity
 dodgers vs red sox
 fire vs fever
 sid wilson
-cyclospora outbreak uk
-haku
-uk 35c temperature forecast
-wrigley field
-charley hull prank
