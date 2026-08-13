@@ -1,9 +1,16 @@
 hotels
+fitness
+meditation
+sports
+swimming
+travel
+natalie harp
+movies
+elena rybakina
+coco gauff
 flights
 time
 concerts
-travel
-sports
 games
 zilla fatu
 mcdonald's
@@ -27,7 +34,6 @@ naomi osaka
 flamengo vs vitória
 joao fonseca
 schools
-swimming
 jobs
 coffee
 the financial times
@@ -37,7 +43,6 @@ artificial intelligence news
 ronaldo
 cycling
 music
-movies
 boylesports
 twitch
 chicago vs necaxa
@@ -93,8 +98,3 @@ lamont roach
 tennis scores today
 ns&i
 jason arday
-global combat air programme
-el nino california shark activity
-dodgers vs red sox
-fire vs fever
-sid wilson

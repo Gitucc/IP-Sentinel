@@ -1,3 +1,13 @@
+meteorología
+noticias
+cine
+vuelos
+pizza
+hospitales
+música
+playa
+a
+australia vs bangladesh
 bolívar - são paulo
 muere policia nacional
 clima
@@ -19,20 +29,13 @@ singapur
 blanca suarez
 euro stoxx 50
 vibrio vulnificus
-noticias
-vuelos
 juegos
-música
 café
-cine
-playa
 hbo
 américa - atlético nacional
 posiciones de sport boys contra alianza lima
-hospitales
 empleos
 mapas
-pizza
 posiciones de club universitario de deportes contra sporting cristal
 m
 universitario - sporting cristal
@@ -95,6 +98,3 @@ lockheed martin f-35 lightning ii
 terremoto napoles
 josé luis calama
 alejandro tabilo
-iphone 18
-ben shelton
-franco baresi fallecimiento
