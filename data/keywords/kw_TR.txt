@@ -1,3 +1,13 @@
+ebola
+sermaye piyasası kurulu
+gaziantep hava durumu
+bitcoin
+mersin hava durumu
+ülke puanı
+rize hava durumu
+giresun hava durumu
+bursa hava durumu
+malatya hava durumu
 kocaeli hava durumu
 météo
 gram altın fiyatları
@@ -88,13 +98,3 @@ mohamed salah trabzonspor
 menderes belediyesi
 nefes
 bernardo silva
-van hava durumu
-tüik
-brent petrol fiyatı
-yatırımcı
-sondakika
-malatya haber
-pasaport
-şehir hatları
-denizli ulaşım
-birgün gazetesi
