@@ -1,3 +1,13 @@
+vuelos
+mapas
+pizza
+crimea congo
+cine
+bancos
+riot
+música
+tiempo en granada
+tormenta malaga
 condenado
 terremoto colombia magnitud
 boxeador prichard colón
@@ -10,11 +20,7 @@ twins - phillies
 islam makhachev
 meteorología
 noticias
-cine
-vuelos
-pizza
 hospitales
-música
 playa
 a
 australia vs bangladesh
@@ -45,7 +51,6 @@ hbo
 américa - atlético nacional
 posiciones de sport boys contra alianza lima
 empleos
-mapas
 posiciones de club universitario de deportes contra sporting cristal
 m
 universitario - sporting cristal
@@ -93,8 +98,3 @@ quincena
 crónica libre
 pedro porro
 tiempo coruña
-post créditos spiderman brand new day
-mohamed vi de marruecos
-robert lewandowski
-tormentas valencia
-contrabando
