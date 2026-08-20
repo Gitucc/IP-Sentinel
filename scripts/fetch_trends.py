@@ -70,6 +70,18 @@ def update_file(region, new_words, fallback_msg=""):
         f.write('\n'.join(final_list) + '\n')
     print(f"[同步完成] {region}: 注入 {len(new_words)} 条新记录，维持总数 {len(final_list)} 条{fallback_msg}")
 
+
+def refresh_regions(regions, sleep_fn=time.sleep):
+    updated_regions = 0
+    for region in regions:
+        print(f"正在拉取 {region} 区域数据...")
+        words, fallback_msg = fetch_trends(region)
+        if words:
+            update_file(region, words, fallback_msg)
+            updated_regions += 1
+        sleep_fn(random.uniform(1.5, 3.5))
+    return updated_regions
+
 if __name__ == '__main__':
     regions = get_active_regions()
     if not regions:
@@ -77,10 +89,8 @@ if __name__ == '__main__':
         exit(1)
     
     print("启动动态热词抓取...")
-    for r in regions:
-        print(f"正在拉取 {r} 区域数据...")
-        words, fallback_msg = fetch_trends(r)
-        if words:
-            update_file(r, words, fallback_msg)
-        time.sleep(random.uniform(1.5, 3.5))
+    updated_regions = refresh_regions(regions)
+    if updated_regions == 0:
+        print("所有区域都抓取失败，保留原词库并返回失败状态。")
+        exit(1)
     print("热词抓取执行完毕。")

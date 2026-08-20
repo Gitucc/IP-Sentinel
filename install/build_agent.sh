@@ -146,8 +146,8 @@ do_env_precheck
 do_fetch_version
 do_install_deps
 
-do_fetch_map
 do_handle_menu
+do_fetch_map
 
 do_clean_env
 

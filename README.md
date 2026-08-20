@@ -1,107 +1,196 @@
-# IP-Sentinel (分布式 IP 状态监测与养护系统)
+# IP-Sentinel
 
-IP-Sentinel 是一个基于 Master-Agent 架构的分布式 VPS IP 状态监测与养护工具。项目主要用于解决云服务器公网 IP 被地理位置数据库错误定位以及因信誉度较低被拦截的问题。系统支持通过部署在边缘节点的 Agent 进行本地模拟访问以提升 IP 信誉，并允许管理者通过私有 Telegram Bot 控制中枢（Master）对所有边缘节点进行配置管理与指令分发。
+IP-Sentinel 是一个面向 VPS 公网 IP 的监测与低频养护工具，采用 Master-Agent 架构。Agent 部署在需要维护的服务器上，按所选地区执行本地化搜索与白名单访问，并生成 IP 质量报告；Master 可选，用 Telegram Bot 统一管理多台 Agent。
+
+本仓库是 [hotyue/IP-Sentinel](https://github.com/hotyue/IP-Sentinel) 的下游 Fork。代码、安装脚本和 OTA 更新源都指向本仓库，Master 与 Agent 应成套使用。
+
+> [!IMPORTANT]
+> IP 地理定位和信誉由外部平台决定，本项目只能提供持续、低频的正常访问行为与检测结果，不能保证 IP 一定被改定位、解除风控或恢复特定服务。
 
 > [!WARNING]
-> **📌 关于本 Fork 分支 (安全加固与可观测性重构)**
-> 本仓库是基于 [hotyue/IP-Sentinel](https://github.com/hotyue/IP-Sentinel) 官方项目的下游安全性加固与可观测性重构分支。
-> 
-> **⚠️ 状态声明：**
-> 本分支目前已完成静态语法自检与全流程端到端模拟测试。所有重构在虚拟环境中运行正常，但尚未完成大规模生产环境实网可用性测试。
-> 
-> **⚠️ 兼容性与不兼容声明：**
-> 1. **不兼容官方中枢与特工 (Agent)**：由于本分支对通信协议进行了重构（引入了双端专属 Token 鉴权与管理者 Chat ID 安全白名单），本分支的中枢 (Master) 与客户端 (Agent) 均无法与官方原版混合部署或直接互通。
-> 2. **重定向更新源**：为防止客户端在执行 OTA 自动升级时因拉取官方非兼容代码导致系统崩溃，本分支已将全部安装和更新源 (`REPO_RAW_URL`) 重定向至本仓库。
-> 
-> **🛠️ 对比官方原版仓库的主要变更：**
-> 1. **协议安全与并发加固**：
->    - 引入基于全参数与 `AGENT_TOKEN` 的 HMAC-SHA256 防篡改数字签名及 60 秒时效性校验，防范跨节点重放与横向越权攻击。
->    - 增加注册端私网/回环 IP 过滤（防御 SSRF）及 OTA 源特殊字符限制（熔断命令注入风险）。
->    - 开启 SQLite3 WAL (Write-Ahead Logging) 模式与排队重试，降低中枢并发写入时的锁库死锁概率。
-> 2. **日志可观测性与对齐重构**：
->    - 统一将 Agent 巡逻子模块的日志分发由依赖系统 `logger` 重构为 stdout 输出，并使用 `systemd-cat` 管道重定向异步脚本输出，确保 Systemd 捕获的 Journal 日志与本地物理日志文件（如 `sentinel.log`、`master.log`）及 Bot 提取日志信息量完全一致。
->    - 补全声呐自检、安装部署流（使用后台 `tee` 流自动劫持，且不记录敏感 Token 输入）、中枢指令下发/SQLite 事务等全生命周期中关键步骤、超时、安全熔断和错误状态码的审计日志。
-> 
-> 感谢原作者 [@hotyue](https://github.com/hotyue) 提供的开源基础。如需部署标准官方版本，请访问 [上游官方仓库](https://github.com/hotyue/IP-Sentinel)。
+> 当前代码已通过 Shell 语法检查、Master 安全策略、注册重发、每日更新器和数据契约等自动化测试；尚未完成真实 Telegram、不同云厂商安全组和大规模节点的生产验证。建议先在一台测试机部署。
 
----
+## 当前仓库会做什么
 
-## 核心设计与安全机制
+### Agent：在节点上执行监测与养护
 
-- 📊 **自适应 IP 质量监测**：内置多维质量检测探针，支持获取公网 IP 分区定位、流媒体解锁状态及异常预警，并展示 IP 历史污染指数趋势。
-- 🔒 **基于 HMAC-SHA256 的请求防篡改机制**：Agent 端与 Master 端通信引入带有 60 秒时效性（时间戳校验）的 HMAC-SHA256 签名。本次安全重构将 URL 的所有业务查询参数以及节点专属 Token（`AGENT_TOKEN`）共同纳入签名哈希，防止参数篡改与跨节点的横向重放攻击。
-- 🛡️ **中枢安全白名单过滤**：中枢控制端引入 `ALLOWED_CHAT_ID` 白名单限制。非授权账户向 Bot 发送的指令和数据均会被丢弃，用以防范针对中枢的 SQL 注入与非授权节点的注册。
-- ⚡ **SQLite WAL 并发控制**：控制中枢采用 SQLite 数据库存储节点状态，并激活 `WAL` (Write-Ahead Logging) 模式和排队重试机制，在高频并发场景下降低数据库锁死及 Telegram 限流风险。
-- 🖧 **多 IP 出口自适应**：Agent 节点支持检测物理网卡的 IPv4 与 IPv6 出口，并结合发包参数（`--interface`）实现多宿主路由通道的绑定与自动降级。
-- 🔄 **带签名验证的远程升级**：在私有中枢部署下，支持通过双端签名校验授权的 OTA 静默热升级，降低多节点日常运维复杂度。
+- 安装时选择国家、行政区和城市。国家代码决定热词文件，城市配置决定坐标、语言参数和白名单网址。
+- 默认每 20 分钟唤醒一次任务，并加入随机延迟。Google 地区纠偏和 IP 信用养护同时开启时，每轮按 70% / 30% 的概率选择其中一个执行。
+- 每天在安装时刻附近同步本国热词、当前城市配置和 IP 质量探针；User-Agent 池每 30 天更新一次。
+- 下载内容先写入临时目录并检查格式。热词不足、下载到 HTML/404 页面或城市 JSON 缺字段时，保留本地旧文件，不用坏数据覆盖。
+- 可通过 Telegram 手动执行养护、质量检测、报告生成和日志提取，也可完全不接入 Master，只运行本地定时任务。
 
----
+热词按国家或地区共享，不细分到城市。例如选择美国某个城市时，Agent 使用 `data/keywords/kw_US.txt`；城市差异来自对应的 `data/regions/.../*.json`。
 
-## 项目架构说明
+### 数据仓库：每天准备 Agent 要用的地区数据
 
-本项目采用模块化的代码库结构，冷热数据隔离：
+- GitHub Actions 每天 03:00 UTC 从 Google Trends RSS 抓取各国家或地区的热门词，合并旧记录后每个地区最多保留 100 条。
+- 同一任务会读取各城市的 Google News RSS，更新城市配置里的白名单访问地址。
+- 如果所有地区的热词都抓取失败，任务会返回失败并保留旧词库，不提交一份看似成功的空更新。
+- User-Agent 数据在每月 1 日 04:00 UTC 重新生成。
 
-```text
-📦 IP-Sentinel
- ┣ 📂 .github/workflows/      # 云端指纹库与热词抓取流水线
- ┣ 📂 install/                # 安装及环境判定的编排脚本目录
- ┣ 📜 install.sh              # 边缘节点 Agent 安装入口脚本
- ┣ 📂 master/                 # 控制中枢 Master 端逻辑（包含 SQLite 建库与 TG 轮询守护脚本）
- ┣ 📂 core/                   # 边缘节点 Agent 端逻辑（内置 Webhook Python 进程及纠偏、净化等 shell 模块）
- ┣ 📂 scripts/                # 辅助词库及设备指纹生成的 python 工具
- ┣ 📂 data/                   # 全球区域拓扑图与本地持久化指纹/词库
- ┣ 📜 version.txt             # 版本控制标识文件
- ┗ 📂 telemetry/              # 匿名装机量统计网关代码 (基于 Cloudflare Workers)
+Agent 从本仓库的 `main` 分支读取这些数据。因此，仓库里的每日数据提交不需要手动合并到已经安装的节点。
+
+### Master：通过 Telegram 管理多台 Agent
+
+Master 使用 SQLite 保存节点、配置和 IP 质量历史，可在 Bot 面板中执行以下操作：
+
+- 查看已登记节点、单机报告、日志和质量趋势；
+- 单独或批量触发 Google 纠偏、信用养护和系统巡检；
+- 开关 Agent 模块、修改展示名、删除节点；
+- 在私有部署且已授权时，升级 Master 或 Agent。
+
+当前通信和管理边界包括：
+
+- 新安装的每台 Agent 都有独立 `AGENT_TOKEN`。Master 对请求路径、全部业务参数和时间戳计算 HMAC-SHA256，Agent 只接受 60 秒窗口内且未使用过的签名。
+- `ALLOWED_CHAT_ID` 限制可以操作私有 Master 的 Telegram 账号。
+- 升级、删除、改名、模块开关和批量任务只能从 Bot 按钮发起；Master 会检查节点是否属于当前 Chat ID。
+- Master 只接受公网 IPv4/IPv6 注册地址，拒绝回环、私网、保留和组播地址，避免把节点注册入口变成内网请求代理。
+- SQLite 使用 WAL 和忙等待设置，减少多条 Telegram 请求同时写库时的锁冲突。
+- Master 的安全规则位于独立的 `master/security_policy.sh`。安装器会同时下载并检查它与主程序；缺少规则文件时 Master 不启动。
+
+## 安装前准备
+
+- 一台或多台拥有公网 IPv4 或 IPv6 的 Linux VPS；
+- `root` 权限；
+- 能访问 GitHub Raw、Google 和相关目标站点的网络；
+- 使用远程管理时，需要 Telegram Bot Token、自己的 Chat ID，以及一个可从 Master 访问的 Agent TCP 端口；
+- 云厂商安全组和主机防火墙需要放行所选 Agent 端口。
+
+安装器支持 Debian、Ubuntu、CentOS、RHEL、Alpine Linux 和 Arch Linux。Systemd 环境使用 service/timer；其他环境回退到 Cron 或兼容调度器。
+
+## 推荐用法：私有 Master + Agent
+
+### 1. 安装 Master
+
+先用 [@BotFather](https://t.me/BotFather) 创建 Telegram Bot，并取得自己的 Chat ID。然后在 Master 服务器上执行：
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main/master/install_master.sh)"
 ```
 
----
+安装时选择“私有独立中枢”，填写 Bot Token、管理者 Chat ID，并决定是否允许 Master OTA。
 
-## 部署指南
+### 2. 安装 Agent
 
-系统支持 **Debian / Ubuntu / CentOS / RHEL / Alpine Linux / Arch Linux** 等 Linux 发行版，并自动适配 Systemd 守护进程或 Cron 看门狗守护。
+在每台需要监测和养护的 VPS 上执行：
 
-根据您的安全性与隐私需求，系统提供两种部署接入模式：
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main/install.sh)"
+```
 
-### 🔹 模式 A：私有独立部署模式 (推荐)
-在此模式下，您需要自行部署控制中枢和边缘哨兵，提供独立的数据隐私和远程 OTA 升级功能。
+按提示完成以下设置：
 
-1. **部署 Master 控制中枢**：
-   在一台独立的 VPS 上执行以下指令以启动中枢控制端。安装过程中需要提供您自建的 Telegram Bot Token，并必须设置管理者 Chat ID 白名单以确立安全防线：
-   ```bash
-   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main/master/install_master.sh)"
-   ```
-2. **部署 Agent 边缘哨兵**：
-   在需要进行监测与养护的各个目标边缘服务器上执行以下指令。安装时选择接入自建的私有独立中枢，并输入您相应的 Token、管理者 Chat ID 以及 Webhook 端口：
-   ```bash
-   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main/install.sh)"
-   ```
-3. **激活节点**：
-   安装完成后，Agent 会在本地生成专属的 `AGENT_TOKEN`，并通过 Telegram 推送一条带有 `#REGISTER#` 格式的注册报文。将此报文发送给您的私有机器人，中枢验证无误后即可将该节点录入并完成注册。
+1. 选择国家、行政区和城市；
+2. 选择接入 Master；
+3. 选择“私有独立中枢”，填写同一个 Bot Token 和 Chat ID；
+4. 确认 Agent 的 Webhook 端口和 OTA 权限；
+5. 在云安全组与主机防火墙中放行该 TCP 端口。
 
-### 🔸 模式 B：官方公共网关模式
-适合需要免除 Master 自建、希望体验节点养护效果的用户。在该模式下，您的节点会连接到公共网关，出于滥用防范与供应链风险管理，该模式下远程 OTA 升级权限会被自动禁用。
+安装结束后，Agent 会向 Telegram 发送一条 8 字段注册指令：
 
-1. **关注 Bot**：
-   在 Telegram 中搜索并关注官方机器人 [@OmniBeacon_bot](https://t.me/OmniBeacon_bot) 并发送 `/start`。
-2. **部署 Agent 边缘哨兵**：
-   在目标服务器上执行 Agent 引导安装指令，过程中选择接入官方网关，并提供您的 Chat ID：
-   ```bash
-   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Gitucc/IP-Sentinel/main/install.sh)"
-   ```
-3. **激活节点**：
-   将安装成功后收到含有 Token 的注册报文发送给官方机器人 [@OmniBeacon_bot](https://t.me/OmniBeacon_bot) 即可。
+```text
+#REGISTER#|REGION_CODE|NODE_NAME|COMM_IP|AGENT_PORT|NODE_ALIAS|ENABLE_OTA|AGENT_TOKEN
+```
 
----
+把整行指令发送给自己的 Bot。Master 回复“档案已录入”后，在 Bot 中发送 `/start` 或 `/menu` 打开控制面板。
 
-## 升级与维护
+注册指令含 `AGENT_TOKEN`，不要转发、截图公开或写进仓库。
 
-- **远程静默升级**（私有中枢专属）：
-  当中枢检测到新版本时，您可以通过 Telegram Bot 菜单一键向控制端及所有已授权的 Agent 发送升级指令。Agent 收到请求后会在后台下载并自动覆写。
-- **SSH 手动平滑覆盖**（公共网关或老旧节点）：
-  登录节点终端，重新执行顶部的单行部署指令。安装引擎会自动检测本地存在的 `config.conf` 配置，并执行平滑覆盖以继承老节点的配置属性。
+## 其他运行方式
 
----
+### 只运行本地 Agent
+
+执行 Agent 安装命令，在“是否接入 Master”处选择 `n`。本地的 20 分钟养护和每日数据同步仍会运行，但没有 Telegram 报告、远程控制和 OTA。
+
+### 不支持官方公共网关
+
+当前 Fork 的注册协议和签名方式与官方 Bot / Master 不兼容，不能使用官方公共网关。安装器目前仍会显示“官方公共网关”选项，请不要选择；需要 Telegram 管理时必须部署本 Fork 的私有 Master。
+
+## 日常维护
+
+### 平滑升级
+
+重新执行对应的安装命令并选择安装/升级。安装器检测到同一 Fork 的现有配置后，会询问是否沿用配置和保留日志。
+
+私有 Master 和已授权的 Agent 也可以从 Telegram 面板执行 OTA。不要把 `REPO_RAW_URL` 改成上游仓库地址，否则可能把不兼容的通信代码覆盖到单侧节点。
+
+### 重新发送注册信息
+
+重新执行 Agent 安装命令，选择：
+
+```text
+3) 重新发送节点注册信息
+```
+
+脚本会读取 `/opt/ip_sentinel/config.conf`，检查端口、公网地址、HTTPS API、Chat ID 和 `AGENT_TOKEN`。如果探测到公网 IPv4/IPv6 已变化，会先询问是否使用新地址，再发送新的注册消息。此操作不会重新下载地区地图，也不会重装 Agent。
+
+### 常用位置
+
+| 内容 | 路径 |
+| --- | --- |
+| Agent 配置 | `/opt/ip_sentinel/config.conf` |
+| Agent 日志 | `/opt/ip_sentinel/logs/sentinel.log` |
+| Agent OTA 日志 | `/opt/ip_sentinel/logs/ota_upgrade.log` |
+| Master 配置 | `/opt/ip_sentinel_master/master.conf` |
+| Master 数据库 | `/opt/ip_sentinel_master/sentinel.db` |
+| Master 日志 | `/opt/ip_sentinel/logs/master.log` |
+
+Systemd 环境可查看服务状态：
+
+```bash
+systemctl status ip-sentinel-agent-daemon.service
+systemctl status ip-sentinel-master.service
+```
+
+## 与上游仓库的主要差异和兼容性
+
+| 项目 | 本 Fork 的处理 | 兼容性 |
+| --- | --- | --- |
+| Master-Agent 鉴权 | 新节点使用独立 `AGENT_TOKEN`，对请求路径、排序后的业务参数和时间戳签名，并检查超时与重放 | Fork Master 与 Fork Agent 成套使用 |
+| 注册协议 | 使用包含 `AGENT_TOKEN` 的 8 字段 `#REGISTER#` 指令 | 不支持把上游 Master 和本 Fork Agent 混用，反向组合也不受支持 |
+| 官方 Bot / 公共网关 | 当前 Fork 没有官方协议适配 | 不可用；不要选择安装器里的“官方公共网关” |
+| Telegram 权限 | 管理者 Chat ID 白名单；高权限操作只接受按钮回调；操作前检查节点归属和参数 | 需要本 Fork 的 `tg_master.sh` 与 `security_policy.sh` 一起部署 |
+| 注册地址 | 只接受公网 IP；私网、回环、保留、组播地址会被拒绝 | 内网地址、Tailscale/WireGuard 私网地址不能直接注册为通讯地址 |
+| 更新来源 | 安装、数据同步和 OTA 默认读取 `Gitucc/IP-Sentinel` | 不能把单侧组件的更新源切到 `hotyue/IP-Sentinel` |
+| 数据格式 | 继续使用 `data/map.json`、`data/keywords/kw_<地区>.txt` 和城市 JSON 结构 | 可以按文件审查并同步上游数据，但不要直接同步上游通信与安装代码 |
+| 同 Fork 旧节点 | 安装器会保留配置，并为缺少 Token 的旧配置生成 `AGENT_TOKEN` | 升级后如提示鉴权失败，需要重新发送注册信息 |
+
+Agent 和 Master 仍保留以 `CHAT_ID` 作为签名密钥的旧配置回退，用来避免同一 Fork 的旧节点在升级瞬间失联。新安装和“重新发送注册信息”都要求 `AGENT_TOKEN`；这条回退不代表可以和上游版本混合部署。
+
+从上游原版迁移时，先备份配置和数据库，再把 Master 与 Agent 一起切换到本 Fork，并重新注册所有节点。只升级其中一端不在支持范围内。
+
+## 自动化检查
+
+仓库的 `Quality Checks` 工作流会执行：
+
+- 所有 Shell 脚本的语法检查；
+- Master 安全策略测试；
+- 注册重发测试；
+- 每日更新器的下载失败、坏数据和保留旧文件测试；
+- 地图、城市配置和热词的数据契约测试；
+- 热词全部抓取失败时的退出状态测试。
+
+这些检查覆盖脚本逻辑，不等同于真实云网络、Telegram API 或目标网站的生产验收。
+
+## 仓库结构
+
+```text
+IP-Sentinel/
+├── .github/workflows/   # 每日数据、月度 UA 和质量检查
+├── install/             # Agent 与 Master 的模块化安装流程
+├── core/                # Agent 调度、养护、报告、更新和 Webhook
+├── master/              # Telegram Master 与安全策略
+├── scripts/             # 热词、新闻网址和 User-Agent 生成器
+├── data/                # 地图、国家热词、城市配置和 User-Agent
+├── telemetry/           # 匿名装机计数 Worker
+├── tests/               # Shell 与 Python 回归测试
+├── install.sh           # Agent 安装入口
+└── version.txt          # Master / Agent 版本号
+```
 
 ## 免责声明
 
-本项目仅供网络原理研究及个人服务器运维学习使用。请严格遵守您 VPS 提供商的 TOS（服务条款）及当地法律法规，切勿用于恶意高频请求或任何非法用途。使用者需自行承担由此产生的相关风险。
+本项目仅用于网络原理研究和个人服务器运维。使用前请确认 VPS 提供商的服务条款、目标网站规则和当地法律，不要用于恶意请求、流量伪造或规避平台限制。使用者自行承担运行风险。
+
+感谢 [@hotyue](https://github.com/hotyue) 提供上游项目。标准上游版本见 [hotyue/IP-Sentinel](https://github.com/hotyue/IP-Sentinel)。

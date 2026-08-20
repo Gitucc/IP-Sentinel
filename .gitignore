@@ -6,6 +6,11 @@ scratch/
 .tg_offset
 cert.pem
 key.pem
+.env
+.env.*
+.env.d/
+*.env
+!*.env.example
 
 docs/
 __pycache__/

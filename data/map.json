@@ -559,6 +559,10 @@
                 {
                   "id": "Fremont",
                   "name": "Fremont (弗里蒙特)"
+                },
+                {
+                  "id": "Irvine",
+                  "name": "Irvine (尔湾)"
                 }
               ]
             },
@@ -663,6 +667,10 @@
                 {
                   "id": "New_York",
                   "name": "New York (纽约)"
+                },
+                {
+                  "id": "Buffalo",
+                  "name": "Buffalo (布法罗)"
                 }
               ]
             },

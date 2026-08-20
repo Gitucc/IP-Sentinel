@@ -181,6 +181,24 @@ version_lt() {
     test "$(printf '%s\n' "$1" "$2" | sort -V | head -n 1)" = "$1" && test "$1" != "$2"
 }
 
+do_resend_registration() {
+    local resend_script="${SECURE_TMP}/resend_registration.sh"
+
+    echo -e "\n⏳ 正在读取节点配置..."
+    if ! curl -fsSL --connect-timeout 10 --retry 3 \
+        "${REPO_RAW_URL}/core/resend_registration.sh" -o "$resend_script"; then
+        echo "❌ 重新发送注册信息的组件下载失败。"
+        exit 1
+    fi
+    if ! bash -n "$resend_script" >/dev/null 2>&1; then
+        echo "❌ 下载的注册组件未通过语法检查。"
+        exit 1
+    fi
+    chmod +x "$resend_script"
+    bash "$resend_script" "$CONFIG_FILE"
+    exit $?
+}
+
 echo -e "\n[1/7] 正在探测并安装基础环境依赖 (curl, jq, cron, procps, python3)..."
 REQUIRED_CMDS=("curl" "jq" "crontab" "pgrep" "python3" "openssl")
 MISSING_CMDS=()
@@ -249,13 +267,6 @@ if [ ${#MISSING_CMDS[@]} -gt 0 ]; then
 fi
 echo -e "\033[32m✅ 基础环境检测通过。\033[0m"
 
-echo -e "\n[2/7] 正在连线云端，拉取全球节点地图..."
-curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/data/map.json" -o "${SECURE_TMP}/map.json"
-if [ ! -s "${SECURE_TMP}/map.json" ]; then
-    echo -e "\033[31m❌ 拉取全球地图失败！请检查网络或 GitHub 仓库地址。\033[0m"
-    exit 1
-fi
-
 if [ "$SILENT_OTA" == "true" ]; then
     echo -e "\n⏳ [OTA] 静默升级指令已确认，正在剥离控制台交互..."
     ACTION_CHOICE=1
@@ -266,7 +277,8 @@ else
     echo -e "\n请选择操作:"
     echo "  1) 🚀 部署边缘节点 (进入全球节点配置)"
     echo "  2) 🗑️ 一键卸载 IP-Sentinel"
-    safe_read_input ACTION_CHOICE "请输入选择 [1-2] (默认1): " "1" "range:1:2"
+    echo "  3) 📨 重新发送节点注册信息"
+    safe_read_input ACTION_CHOICE "请输入选择 [1-3] (默认1): " "1" "range:1:3"
 
     if [ "$ACTION_CHOICE" == "2" ]; then
         echo -e "\n⏳ 正在拉取卸载程序..."
@@ -275,6 +287,10 @@ else
         bash "${SECURE_TMP}/ip_uninstall.sh"
         rm -f "${SECURE_TMP}/ip_uninstall.sh"
         exit 0
+    fi
+
+    if [ "$ACTION_CHOICE" == "3" ]; then
+        do_resend_registration
     fi
 
     UPGRADE_MODE="false"
@@ -296,6 +312,13 @@ else
             echo -e "\033[33m🔄 您选择了重新配置，旧的哨兵数据将被彻底抹除。\033[0m"
         fi
     fi
+fi
+
+echo -e "\n[2/7] 正在连线云端，拉取全球节点地图..."
+curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/data/map.json" -o "${SECURE_TMP}/map.json"
+if [ ! -s "${SECURE_TMP}/map.json" ]; then
+    echo -e "\033[31m❌ 拉取全球地图失败！请检查网络或 GitHub 仓库地址。\033[0m"
+    exit 1
 fi
 
 echo -e "\n⏳ 正在清理系统定时任务中的旧版条目..."

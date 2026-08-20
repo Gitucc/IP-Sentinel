@@ -1,0 +1,36 @@
+name: Quality Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Check shell syntax
+        run: find . -name '*.sh' -not -path './.git/*' -print0 | xargs -0 -n1 bash -n
+
+      - name: Test Master security policy
+        run: bash tests/test_master_security.sh
+
+      - name: Test registration resend
+        run: bash tests/test_resend_registration.sh
+
+      - name: Test daily updater
+        run: bash tests/test_daily_updater.sh
+
+      - name: Test data contracts
+        run: python tests/test_data_contracts.py
+
+      - name: Test trend refresh logic
+        run: python tests/test_fetch_trends.py

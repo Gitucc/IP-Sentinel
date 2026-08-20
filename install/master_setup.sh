@@ -363,12 +363,20 @@ do_master_deploy_core() {
     echo -e "\n[4/4] 正在拉取新版司令部核心引擎..."
 
     TMP_MASTER="${SECURE_TMP}/tg_master.sh"
+    TMP_SECURITY_POLICY="${SECURE_TMP}/security_policy.sh"
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/master/tg_master.sh" -o "$TMP_MASTER"
+    curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/master/security_policy.sh" -o "$TMP_SECURITY_POLICY"
 
-    if [ ! -s "$TMP_MASTER" ]; then
+    if [ ! -s "$TMP_MASTER" ] || [ ! -s "$TMP_SECURITY_POLICY" ]; then
         echo -e "\033[31m❌ 致命错误：中枢核心代码拉取失败！网络阻断或 GitHub Raw 异常。\033[0m"
         echo "🛡️ 防砖机制触发：已中止覆盖，旧版司令部仍在安全运行中。"
-        rm -f "$TMP_MASTER"
+        rm -f "$TMP_MASTER" "$TMP_SECURITY_POLICY"
+        exit 1
+    fi
+
+    if ! bash -n "$TMP_MASTER" >/dev/null 2>&1 || ! bash -n "$TMP_SECURITY_POLICY" >/dev/null 2>&1; then
+        echo -e "\033[31m❌ 中枢核心代码未通过语法检查，部署已取消。\033[0m"
+        rm -f "$TMP_MASTER" "$TMP_SECURITY_POLICY"
         exit 1
     fi
 
@@ -379,8 +387,9 @@ do_master_deploy_core() {
     fi
     pkill -9 -f "tg_master.sh" >/dev/null 2>&1 || true
 
+    mv "$TMP_SECURITY_POLICY" "${MASTER_DIR}/security_policy.sh"
     mv "$TMP_MASTER" "${MASTER_DIR}/tg_master.sh"
-    chmod +x "${MASTER_DIR}/tg_master.sh"
+    chmod +x "${MASTER_DIR}/security_policy.sh" "${MASTER_DIR}/tg_master.sh"
 
     if is_systemd; then
         echo "💡 检测到 Systemd 环境，正在部署原生守护服务..."

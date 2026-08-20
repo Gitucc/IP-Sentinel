@@ -1,0 +1,35 @@
+{
+  "region_name": "United States - California (Irvine)",
+  "google_module": {
+    "base_lat": 33.6846,
+    "base_lon": -117.8265,
+    "lang_params": "hl=en-US&gl=US",
+    "valid_url_suffix": "com"
+  },
+  "trust_module": {
+    "white_urls": [
+      "https://www.target.com/",
+      "https://www.weather.gov/",
+      "https://www.amazon.com/",
+      "https://www.chase.com/",
+      "https://www.indeed.com/",
+      "https://www.irs.gov/",
+      "https://www.zillow.com/",
+      "https://www.usa.gov/",
+      "https://www.homedepot.com/",
+      "https://www.walmart.com/"
+    ],
+    "static_urls": [
+      "https://www.target.com/",
+      "https://www.weather.gov/",
+      "https://www.amazon.com/",
+      "https://www.chase.com/",
+      "https://www.indeed.com/",
+      "https://www.irs.gov/",
+      "https://www.zillow.com/",
+      "https://www.usa.gov/",
+      "https://www.homedepot.com/",
+      "https://www.walmart.com/"
+    ]
+  }
+}

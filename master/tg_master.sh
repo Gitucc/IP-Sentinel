@@ -68,6 +68,21 @@ execute_sqlite_query() {
     printf ".timeout 5000\n%s\n" "$1" | sqlite3 "$DB_FILE"
 }
 
+SECURITY_POLICY_FILE="${MASTER_DIR}/security_policy.sh"
+if [ ! -r "$SECURITY_POLICY_FILE" ]; then
+    log_master_event "ERROR" "Security" "Security policy file is missing: $SECURITY_POLICY_FILE"
+    exit 1
+fi
+source "$SECURITY_POLICY_FILE"
+
+node_belongs_to_chat() {
+    local chat_id="$1"
+    local node_name="$2"
+
+    is_valid_node_name "$node_name" || return 1
+    [ "$(execute_sqlite_query "SELECT 1 FROM nodes WHERE chat_id='$chat_id' AND node_name='$node_name' LIMIT 1;")" == "1" ]
+}
+
 generate_signed_url() {
     local target_ip=$1
     local target_port=$2
@@ -165,7 +180,9 @@ while true; do
             CHAT_ID=$(echo "$UPDATE" | jq -r '.message.chat.id // .callback_query.message.chat.id')
                 CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
             
-            callback_payload=$(echo "$UPDATE" | jq -r '.message.text // .callback_query.data')
+            message_text=$(echo "$UPDATE" | jq -r '.message.text // empty')
+            callback_data=$(echo "$UPDATE" | jq -r '.callback_query.data // empty')
+            callback_payload=${callback_data:-$message_text}
 
             # 校验管理者 CHAT_ID
             if [[ -n "$ALLOWED_CHAT_ID" ]] && [[ "$CHAT_ID" != "$ALLOWED_CHAT_ID" ]]; then
@@ -175,8 +192,14 @@ while true; do
             
             log_master_event "INFO" "Receiver" "Received command from CHAT_ID '$CHAT_ID'. Payload: '$callback_payload'"
 
-                callback_query_id=$(echo "$UPDATE" | jq -r '.callback_query.id // empty')
+            callback_query_id=$(echo "$UPDATE" | jq -r '.callback_query.id // empty')
             callback_message_id=$(echo "$UPDATE" | jq -r '.callback_query.message.message_id // empty')
+
+            if is_privileged_callback_payload "$callback_payload" && ! is_callback_request "$callback_query_id"; then
+                send_msg "$CHAT_ID" "⛔ 该操作只能通过控制面板按钮执行。"
+                log_master_event "WARN" "Security" "Privileged text command rejected for Chat ID '$CHAT_ID': '$callback_payload'"
+                continue
+            fi
 
             if [[ "$callback_payload" == "svq|"* ]]; then
                 IFS='|' read -r protocol_header RAW_NODE_ID RAW_SCORE RAW_GOOG_ST RAW_NF_ST RAW_GPT_ST <<< "$callback_payload"
@@ -265,16 +288,15 @@ while true; do
                 [ -z "$AGENT_OTA" ] && AGENT_OTA="false"
                 AGENT_TOKEN=$(echo "$RAW_TOKEN" | tr -cd 'a-fA-F0-9')
                 
-                # 限制非公网或回环地址以防御 SSRF
-                if [[ "$AGENT_IP" =~ ^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^::1$|^localhost$ ]]; then
-                    send_msg "$CHAT_ID" "⛔ **安全过滤**：禁止注册私有或本地回环地址，以防御 SSRF 渗透。"
-                    log_master_event "WARN" "Security" "Registration blocked: Private/loopback IP '$AGENT_IP' from Chat ID '$CHAT_ID'. Node: '$NODE_NAME'"
-                    continue
-                fi
-                
                 if [ -z "$NODE_NAME" ] || [ -z "$AGENT_IP" ] || [ -z "$AGENT_PORT" ] || [ -z "$CHAT_ID" ]; then
                     send_msg "$CHAT_ID" "⛔ **安全过滤**：注册数据包校验未通过，注册已拒绝。"
-                    log_master_event "WARN" "Security" "Registration rejected: Invalid register payload format from Chat ID '$CHAT_ID'. Raw: '$registration_record'"
+                    log_master_event "WARN" "Security" "Registration rejected: Invalid register payload format from Chat ID '$CHAT_ID'."
+                    continue
+                fi
+
+                if ! is_public_agent_address "$AGENT_IP"; then
+                    send_msg "$CHAT_ID" "⛔ **安全过滤**：节点通讯地址必须是公网 IP。"
+                    log_master_event "WARN" "Security" "Registration blocked: Non-public address '$AGENT_IP' from Chat ID '$CHAT_ID'. Node: '$NODE_NAME'"
                     continue
                 fi
 
@@ -330,7 +352,7 @@ while true; do
                         BTNS="[[{\"text\":\"🌍 进入全球雷达 (管理节点)\",\"callback_data\":\"list_nodes\"}], [{\"text\":\"🚀 唤醒全局巡逻\",\"callback_data\":\"all_run\"}, {\"text\":\"📊 获取全局简报\",\"callback_data\":\"all_reports\"}], [{\"text\":\"🌟 前往 GitHub 点亮星标\",\"url\":\"https://github.com/Gitucc/IP-Sentinel\"}]]"
                     fi
                     DISP_MASTER="${MASTER_NODE_NAME:-未命名中枢}"
-                                TEXT_MSG="🛡️ **IP-Sentinel 控制中枢**\n${VER_INFO}\n中枢节点: \`${DISP_MASTER}\`\n\n📊 节点状态: 共有 \`${NODE_COUNT}\` 台节点在线\n欢迎回来，管理者。请下达系统指令："
+                    TEXT_MSG="🛡️ **IP-Sentinel 控制中枢**\n${VER_INFO}\n中枢节点: \`${DISP_MASTER}\`\n\n📊 已登记节点：\`${NODE_COUNT}\` 台\n请选择操作："
                     send_ui "$CHAT_ID" "$TEXT_MSG" "$BTNS"
                     ;;
                     
@@ -343,7 +365,7 @@ while true; do
                 "all_ota_execute")
                     NODE_DATA=$(execute_sqlite_query "SELECT node_name, agent_ip, agent_port FROM nodes WHERE chat_id='$CHAT_ID' AND enable_ota='true';")
                     if [ -z "$NODE_DATA" ]; then
-                        send_msg "$CHAT_ID" "⚠️ 您名下暂无开启 OTA 权限的在线节点。"
+                        send_msg "$CHAT_ID" "⚠️ 已登记节点中，没有开启 OTA 权限的节点。"
                     else
                         send_msg "$CHAT_ID" "📢 **正在唤醒各节点执行 OTA 升级...**%0A*(节点升级成功后会主动发回新的入库确认，请注意查收)*"
                         echo "$NODE_DATA" | while IFS='|' read -r NNAME AIP APORT; do
@@ -396,7 +418,7 @@ while true; do
                 "all_reports")
                     NODE_DATA=$(execute_sqlite_query "SELECT node_name, agent_ip, agent_port FROM nodes WHERE chat_id='$CHAT_ID';")
                     if [ -z "$NODE_DATA" ]; then
-                        send_msg "$CHAT_ID" "⚠️ 您名下暂无在线节点。"
+                        send_msg "$CHAT_ID" "⚠️ 您名下没有已登记节点。"
                     else
                         NODE_COUNT=$(echo "$NODE_DATA" | grep -c '^')
                         send_msg "$CHAT_ID" "📢 **正在获取全局简报...**%0A*(已唤醒 ${NODE_COUNT} 个节点。由于防限流排队发送机制，简报将依次送达。若后台有刚启动的维护任务，最新数据将在任务完成后自动更新)*"
@@ -410,7 +432,7 @@ while true; do
                 "all_run")
                     NODE_DATA=$(execute_sqlite_query "SELECT node_name, agent_ip, agent_port FROM nodes WHERE chat_id='$CHAT_ID';")
                     if [ -z "$NODE_DATA" ]; then
-                        send_msg "$CHAT_ID" "⚠️ 您名下暂无在线节点。"
+                        send_msg "$CHAT_ID" "⚠️ 您名下没有已登记节点。"
                     else
                         NODE_COUNT=$(echo "$NODE_DATA" | grep -c '^')
                         send_msg "$CHAT_ID" "📢 **正在唤醒所有节点执行系统维护...**%0A*(已向 ${NODE_COUNT} 个节点下发维护指令。任务已在各节点后台异步启动，整轮耗时约 30-60 秒，完成后数据会自动更新)*"
@@ -460,6 +482,11 @@ while true; do
                     else
                         TARGET_NODE=$(echo "$TARGET_NODE" | tr -cd 'a-zA-Z0-9_.-')
                         CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
+
+                        if ! node_belongs_to_chat "$CHAT_ID" "$TARGET_NODE"; then
+                            send_msg "$CHAT_ID" "⛔ 目标节点不存在或不属于当前账号。"
+                            continue
+                        fi
                         
                         TREND_DATA=$(execute_sqlite_query "SELECT datetime(check_time, 'localtime'), scam_score, goog_status, nf_status, gpt_status FROM ip_trend_log WHERE node_name='$TARGET_NODE' ORDER BY check_time DESC LIMIT 15;")
                         
@@ -499,7 +526,7 @@ while true; do
                 "list_nodes")
                     REGION_DATA=$(execute_sqlite_query "SELECT region, COUNT(*) FROM nodes WHERE chat_id='$CHAT_ID' GROUP BY region;")
                     if [ -z "$REGION_DATA" ]; then
-                        send_msg "$CHAT_ID" "⚠️ 您名下暂无在线节点，请先在边缘机执行部署。"
+                        send_msg "$CHAT_ID" "⚠️ 您名下没有已登记节点，请先在边缘机部署。"
                     else
                         BTNS="["
                         while IFS='|' read -r REGION_NAME NODE_COUNT; do
@@ -583,6 +610,17 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                 toggle:*)
                     IFS=':' read -r CMD MOD_NAME TARGET_NODE TARGET_STATE <<< "$callback_payload"
                     CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
+
+                    if ! is_valid_toggle_request "$MOD_NAME" "$TARGET_NODE" "$TARGET_STATE"; then
+                        send_msg "$CHAT_ID" "⛔ 模块切换参数无效，操作已取消。"
+                        log_master_event "WARN" "Security" "Invalid toggle request rejected for Chat ID '$CHAT_ID'."
+                        continue
+                    fi
+                    if ! node_belongs_to_chat "$CHAT_ID" "$TARGET_NODE"; then
+                        send_msg "$CHAT_ID" "⛔ 目标节点不存在或不属于当前账号。"
+                        log_master_event "WARN" "Security" "Unauthorized toggle rejected for Node '$TARGET_NODE' and Chat ID '$CHAT_ID'."
+                        continue
+                    fi
                     
                     AGENT_INFO=$(execute_sqlite_query "SELECT agent_ip, agent_port FROM nodes WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE' LIMIT 1;")
                     AGENT_IP=$(echo "$AGENT_INFO" | cut -d'|' -f1)
@@ -618,7 +656,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                             else
                                 BTN_CONFIG="[{\"text\":\"✏️ 更改终端展示代号\",\"callback_data\":\"rename:$TARGET_NODE\"}]"
                             fi
-                            BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"del:$TARGET_NODE\"}, {\"text\":\"⬅️ 返回区域列表\",\"callback_data\":\"list_nodes\"}]"
+                            BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"del_confirm:$TARGET_NODE\"}, {\"text\":\"⬅️ 返回区域列表\",\"callback_data\":\"list_nodes\"}]"
 
                             BTNS="[$BTN_ACTION, $BTN_TOGGLE, $BTN_CONFIG, $BTN_DANGER]"
                             TARGET_ALIAS=$(execute_sqlite_query "SELECT IFNULL(node_alias, node_name) FROM nodes WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE' LIMIT 1;")
@@ -635,6 +673,10 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
 
                 del_confirm:*)
                     TARGET_NODE=$(echo "${callback_payload#*:}" | tr -cd 'a-zA-Z0-9_.-')
+                    if ! node_belongs_to_chat "$CHAT_ID" "$TARGET_NODE"; then
+                        send_msg "$CHAT_ID" "⛔ 目标节点不存在或不属于当前账号。"
+                        continue
+                    fi
                     TARGET_ALIAS=$(execute_sqlite_query "SELECT IFNULL(node_alias, node_name) FROM nodes WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE' LIMIT 1;")
                     [ -z "$TARGET_ALIAS" ] && TARGET_ALIAS="$TARGET_NODE"
                     
@@ -692,6 +734,10 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                 rename:*)
                     TARGET_NODE=$(echo "${callback_payload#*:}" | tr -cd 'a-zA-Z0-9_.-')
                     CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
+                    if ! node_belongs_to_chat "$CHAT_ID" "$TARGET_NODE"; then
+                        send_msg "$CHAT_ID" "⛔ 目标节点不存在或不属于当前账号。"
+                        continue
+                    fi
                     curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
                         -H "Content-Type: application/json" \
                         -d "{\"chat_id\":\"$CHAT_ID\",\"text\":\"✏️ 请回复本消息以重命名节点:\n\`$TARGET_NODE\`\n(仅限中英文、数字，最长20字符)\",\"parse_mode\":\"Markdown\",\"reply_markup\":{\"force_reply\":true}}" > /dev/null
@@ -734,6 +780,10 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
 
                 ota_confirm:*)
                     TARGET_NODE=$(echo "${callback_payload#*:}" | tr -cd 'a-zA-Z0-9_.-')
+                    if ! node_belongs_to_chat "$CHAT_ID" "$TARGET_NODE"; then
+                        send_msg "$CHAT_ID" "⛔ 目标节点不存在或不属于当前账号。"
+                        continue
+                    fi
                     CONFIRM_BTNS="[[{\"text\":\"🚨 确认执行远程升级\",\"callback_data\":\"ota_execute:$TARGET_NODE\"}], [{\"text\":\"取消\",\"callback_data\":\"manage:$TARGET_NODE\"}]]"
                     send_ui "$CHAT_ID" "☢️ **操作确认**：即将向 \`$TARGET_NODE\` 下发 OTA 热更新指令。\n节点更新完成后会自动发送包含新版本号的注册回执，确定执行？" "$CONFIRM_BTNS"
                     ;;
@@ -838,8 +888,13 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     ;;
 
                 trend:*)
-                            TARGET_NODE=$(echo "${callback_payload#*:}" | tr -cd 'a-zA-Z0-9_.-')
+                    TARGET_NODE=$(echo "${callback_payload#*:}" | tr -cd 'a-zA-Z0-9_.-')
                     CHAT_ID=$(echo "$CHAT_ID" | tr -cd '0-9-')
+
+                    if ! node_belongs_to_chat "$CHAT_ID" "$TARGET_NODE"; then
+                        send_msg "$CHAT_ID" "⛔ 目标节点不存在或不属于当前账号。"
+                        continue
+                    fi
                     
                     TREND_DATA=$(execute_sqlite_query "SELECT datetime(check_time, 'localtime'), scam_score, goog_status, nf_status, gpt_status FROM ip_trend_log WHERE node_name='$TARGET_NODE' ORDER BY check_time DESC LIMIT 15;")
                     

@@ -1,5 +1,23 @@
 #!/bin/bash
 
+do_resend_registration() {
+    local resend_script="${SECURE_TMP}/resend_registration.sh"
+
+    echo -e "\n⏳ 正在读取节点配置..."
+    if ! curl -fsSL --connect-timeout 10 --retry 3 \
+        "${REPO_RAW_URL}/core/resend_registration.sh" -o "$resend_script"; then
+        echo "❌ 重新发送注册信息的组件下载失败。"
+        exit 1
+    fi
+    if ! bash -n "$resend_script" >/dev/null 2>&1; then
+        echo "❌ 下载的注册组件未通过语法检查。"
+        exit 1
+    fi
+    chmod +x "$resend_script"
+    bash "$resend_script" "$CONFIG_FILE"
+    exit $?
+}
+
 do_fetch_map() {
     echo -e "\n[2/7] 正在连线云端，拉取全球节点地图..."
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/data/map.json" -o "${SECURE_TMP}/map.json"
@@ -20,7 +38,8 @@ do_handle_menu() {
         echo -e "\n请选择操作:"
         echo "  1) 🚀 部署边缘节点 (进入全球节点配置)"
         echo "  2) 🗑️ 一键卸载 IP-Sentinel"
-        safe_read_input ACTION_CHOICE "请输入选择 [1-2] (默认1): " "1" "range:1:2"
+        echo "  3) 📨 重新发送节点注册信息"
+        safe_read_input ACTION_CHOICE "请输入选择 [1-3] (默认1): " "1" "range:1:3"
 
         if [ "$ACTION_CHOICE" == "2" ]; then
             echo -e "\n⏳ 正在拉取卸载程序..."
@@ -29,6 +48,10 @@ do_handle_menu() {
             bash "${SECURE_TMP}/ip_uninstall.sh"
             rm -f "${SECURE_TMP}/ip_uninstall.sh"
             exit 0
+        fi
+
+        if [ "$ACTION_CHOICE" == "3" ]; then
+            do_resend_registration
         fi
 
         UPGRADE_MODE="false"
