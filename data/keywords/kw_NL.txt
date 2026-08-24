@@ -1,5 +1,14 @@
-pizza
+p2000
+schools
+exercise
+news
+movies
+games
 flights
+fitness
+cycling
+netflix films thriller
+pizza
 portugese voetballer overleden
 lionel messi
 inter miami - toronto
@@ -10,13 +19,8 @@ ps5
 robin roefs
 xrp
 swimming
-cycling
 sports
-movies
 music
-news
-games
-fitness
 iga świątek
 jobs
 abn amro
@@ -94,7 +98,3 @@ georgina rodriguez
 muk kinderdementie
 112 enschede
 travel
-ns abonnement
-val van paard
-oude delft
-virgil van dijk
