@@ -1,12 +1,17 @@
+tornado frankrijk
+sports
+games
+fitness
+swimming
+hotels
+news
+cycling
+events
+flights
 p2000
 schools
 exercise
-news
 movies
-games
-flights
-fitness
-cycling
 netflix films thriller
 pizza
 portugese voetballer overleden
@@ -18,8 +23,6 @@ apple tv
 ps5
 robin roefs
 xrp
-swimming
-sports
 music
 iga świątek
 jobs
@@ -95,6 +98,3 @@ joy beune
 tesselaar atletiek
 vallende sterren vannacht
 georgina rodriguez
-muk kinderdementie
-112 enschede
-travel
