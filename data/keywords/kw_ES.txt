@@ -1,9 +1,14 @@
+fútbol
 noticias
-museos
-música
-cine
 empleos
+cine
+playa
+música
+nike
+independiente del valle - tolima
 betfair
+cruzeiro - atlético mineiro
+museos
 juegos
 talleres - rosario central
 tornado francia
@@ -29,13 +34,11 @@ nostradamus
 inter miami - toronto
 santa fe - américa
 clima
-fútbol
 cuponazo
 hoteles
 vuelos
 hospitales
 bancos
-playa
 multa
 copa libertadores
 copa sudamericana
@@ -95,6 +98,3 @@ rosario central - corinthians
 santos
 twins - phillies
 islam makhachev
-meteorología
-a
-australia vs bangladesh
