@@ -32,9 +32,12 @@ get_flag() {
 }
 
 send_ui() {
+    local payload
+    payload=$(jq -n --arg chat "$1" --arg text "$2" --argjson buttons "$3" \
+        '{chat_id:$chat, text:($text | gsub("\\\\n"; "\n")), parse_mode:"Markdown", reply_markup:{inline_keyboard:$buttons}}') || return 1
     curl -s --connect-timeout 5 -m 10 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
         -H "Content-Type: application/json" \
-        -d "{\"chat_id\":\"$1\",\"text\":\"$2\",\"parse_mode\":\"Markdown\",\"reply_markup\":{\"inline_keyboard\":$3}}" > /dev/null
+        -d "$payload" > /dev/null
 }
 
 send_msg() {
@@ -47,10 +50,23 @@ edit_msg() {
         -d "chat_id=$1" -d "message_id=$2" -d "text=$3" -d "parse_mode=Markdown" > /dev/null
 }
 
-edit_ui() {
-    curl -s --connect-timeout 5 -m 10 -X POST "https://api.telegram.org/bot${TG_TOKEN}/editMessageText" \
-        -H "Content-Type: application/json" \
-        -d "{\"chat_id\":\"$1\",\"message_id\":\"$2\",\"text\":\"$3\",\"parse_mode\":\"Markdown\",\"reply_markup\":{\"inline_keyboard\":$4}}" > /dev/null
+render_ui() {
+    local chat_id="$1" message_id="$2" text="$3" buttons="$4"
+    local payload response
+    # 面板状态取自当前按钮回调中的聊天和消息，避免不同聊天共用消息编号。
+    if [ -n "$message_id" ]; then
+        payload=$(jq -n --arg chat "$chat_id" --arg message "$message_id" \
+            --arg text "$text" --argjson buttons "$buttons" \
+            '{chat_id:$chat, message_id:$message, text:($text | gsub("\\\\n"; "\n")), parse_mode:"Markdown", reply_markup:{inline_keyboard:$buttons}}') || return 1
+        response=$(curl -s --connect-timeout 5 -m 10 -X POST \
+            "https://api.telegram.org/bot${TG_TOKEN}/editMessageText" \
+            -H "Content-Type: application/json" -d "$payload")
+        if jq -e '.ok == true or ((.description // "") | contains("message is not modified"))' \
+            >/dev/null 2>&1 <<< "$response"; then
+            return 0
+        fi
+    fi
+    send_ui "$chat_id" "$text" "$buttons"
 }
 
 log_master_event() {
@@ -148,7 +164,7 @@ dispatch_agent_request() {
 execute_sqlite_query "PRAGMA journal_mode=WAL;" > /dev/null 2>&1
 execute_sqlite_query "PRAGMA synchronous=NORMAL;" > /dev/null 2>&1
 
-# 自动探测并动态扩展节点表结构
+# 兼容旧版数据库，启动时补齐新增列。
 execute_sqlite_query "ALTER TABLE nodes ADD COLUMN region TEXT DEFAULT 'UNKNOWN';" 2>/dev/null
 execute_sqlite_query "ALTER TABLE nodes ADD COLUMN node_alias TEXT;" 2>/dev/null
 execute_sqlite_query "ALTER TABLE nodes ADD COLUMN enable_google TEXT DEFAULT 'true';" 2>/dev/null
@@ -184,7 +200,7 @@ while true; do
             callback_data=$(echo "$UPDATE" | jq -r '.callback_query.data // empty')
             callback_payload=${callback_data:-$message_text}
 
-            # 校验管理者 CHAT_ID
+            # 先拦截未授权聊天，避免处理其消息。
             if [[ -n "$ALLOWED_CHAT_ID" ]] && [[ "$CHAT_ID" != "$ALLOWED_CHAT_ID" ]]; then
                 log_master_event "WARN" "Security" "Message rejected: Sender CHAT_ID '$CHAT_ID' is not ALLOWED_CHAT_ID '$ALLOWED_CHAT_ID'. Content: '$callback_payload'"
                 continue
@@ -194,6 +210,11 @@ while true; do
 
             callback_query_id=$(echo "$UPDATE" | jq -r '.callback_query.id // empty')
             callback_message_id=$(echo "$UPDATE" | jq -r '.callback_query.message.message_id // empty')
+
+            if [ -n "$callback_query_id" ] && [[ "$callback_payload" != svq\|* ]]; then
+                curl -s --connect-timeout 5 -m 10 -X POST "https://api.telegram.org/bot${TG_TOKEN}/answerCallbackQuery" \
+                    -d "callback_query_id=$callback_query_id" > /dev/null
+            fi
 
             if is_privileged_callback_payload "$callback_payload" && ! is_callback_request "$callback_query_id"; then
                 send_msg "$CHAT_ID" "⛔ 该操作只能通过控制面板按钮执行。"
@@ -353,13 +374,13 @@ while true; do
                     fi
                     DISP_MASTER="${MASTER_NODE_NAME:-未命名中枢}"
                     TEXT_MSG="🛡️ **IP-Sentinel 控制中枢**\n${VER_INFO}\n中枢节点: \`${DISP_MASTER}\`\n\n📊 已登记节点：\`${NODE_COUNT}\` 台\n请选择操作："
-                    send_ui "$CHAT_ID" "$TEXT_MSG" "$BTNS"
+                    render_ui "$CHAT_ID" "$callback_message_id" "$TEXT_MSG" "$BTNS"
                     ;;
                     
                 "all_ota_confirm")
                     CONFIRM_BTNS="[[{\"text\":\"🚨 我已了解风险，下发核按钮指令！\",\"callback_data\":\"all_ota_execute\"}], [{\"text\":\"取消操作\",\"callback_data\":\"/start\"}]]"
                     WARNING_MSG="☢️ **【远程批量升级】**\n\n此操作将向您名下**所有开启 OTA 权限的节点**下发升级指令，强制从云端拉取最新代码并进行热重载。\n\n⚠️ **风险提示**：\n1. 升级过程中守护进程会短暂重启，节点可能出现临时离线。\n2. 若遇 GitHub 源屏蔽或网络极度恶劣，少数节点可能需要手动干预。\n\n**是否确定下发 OTA 升级指令？**"
-                    send_ui "$CHAT_ID" "$WARNING_MSG" "$CONFIRM_BTNS"
+                    render_ui "$CHAT_ID" "$callback_message_id" "$WARNING_MSG" "$CONFIRM_BTNS"
                     ;;
 
                 "all_ota_execute")
@@ -379,7 +400,7 @@ while true; do
                     CONFIRM_BTNS="[[{\"text\":\"🚨 确认重构司令部\",\"callback_data\":\"master_ota_execute\"}], [{\"text\":\"取消操作\",\"callback_data\":\"/start\"}]]"
                     WARNING_MSG="☢️ **【中枢系统重构】**\n\n此操作将拉取最新源码并强行覆盖司令部核心进程。\n\n⚠️ **风险提示**：\n升级期间司令部将短暂失联（约3-5秒）。完成后会自动发送捷报。\n\n**是否确定执行中枢系统升级？**"
                     if [ -n "$callback_message_id" ]; then
-                        edit_ui "$CHAT_ID" "$callback_message_id" "$WARNING_MSG" "$CONFIRM_BTNS"
+                        render_ui "$CHAT_ID" "$callback_message_id" "$WARNING_MSG" "$CONFIRM_BTNS"
                     else
                         send_ui "$CHAT_ID" "$WARNING_MSG" "$CONFIRM_BTNS"
                     fi
@@ -535,7 +556,7 @@ while true; do
                         BTNS="$BTNS[{\"text\":\"$FLAG $REGION_NAME ($NODE_COUNT 台)\",\"callback_data\":\"region:$REGION_NAME\"}],"
                         done <<< "$REGION_DATA"
                         BTNS="$BTNS[{\"text\":\"🏠 回到控制中枢\",\"callback_data\":\"/start\"}]]"
-                        send_ui "$CHAT_ID" "🌍 **全视界雷达面板**\n已为您聚合当前舰队的部署大区，请选择要检阅的区域：" "$BTNS"
+                        render_ui "$CHAT_ID" "$callback_message_id" "🌍 **节点列表**\n请选择区域：" "$BTNS"
                     fi
                     ;;
 
@@ -566,7 +587,7 @@ while true; do
                             BTNS="$BTNS$ROW_STR,"
                         fi
                         BTNS="$BTNS[{\"text\":\"⬅️ 返回区域地图\",\"callback_data\":\"list_nodes\"}, {\"text\":\"🏠 回到控制中枢\",\"callback_data\":\"/start\"}]]"
-                        send_ui "$CHAT_ID" "📍 **[$TARGET_REGION] 区域节点矩阵**\n请选择要操作的具体节点目标：" "$BTNS"
+                        render_ui "$CHAT_ID" "$callback_message_id" "📍 **[$TARGET_REGION] 节点列表**\n请选择节点：" "$BTNS"
                     fi
                     ;;
 
@@ -594,14 +615,14 @@ while true; do
                         BTN_CONFIG="[{\"text\":\"✏️ 更改终端展示代号\",\"callback_data\":\"rename:$TARGET_NODE\"}]"
                     fi
                     
-                    # 变更 callback_data 由 del 变为 del_confirm
+                    # 危险删除必须经过确认，避免按钮误触直接执行。
 BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"del_confirm:$TARGET_NODE\"}, {\"text\":\"⬅️ 返回区域列表\",\"callback_data\":\"list_nodes\"}]"
 
                     BTNS="[$BTN_ACTION, $BTN_TOGGLE, $BTN_CONFIG, $BTN_DANGER]"
                     TEXT_MSG="⚙️ **目标锁定**: \`$TARGET_ALIAS\`\n(底层标识: \`$TARGET_NODE\`)\n🌐 IP 坐标: \`$A_IP\`\n🕒 最后通讯: \`$LAST_SEEN\`\n\n请下达精确控制指令："
 
                     if [ -n "$callback_message_id" ]; then
-                        edit_ui "$CHAT_ID" "$callback_message_id" "$TEXT_MSG" "$BTNS"
+                        render_ui "$CHAT_ID" "$callback_message_id" "$TEXT_MSG" "$BTNS"
                     else
                         send_ui "$CHAT_ID" "$TEXT_MSG" "$BTNS"
                     fi
@@ -662,7 +683,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                             TARGET_ALIAS=$(execute_sqlite_query "SELECT IFNULL(node_alias, node_name) FROM nodes WHERE chat_id='$CHAT_ID' AND node_name='$TARGET_NODE' LIMIT 1;")
                             
                             TEXT_MSG="⚙️ **目标锁定**: \`$TARGET_ALIAS\`\n(底层标识: \`$TARGET_NODE\`)\n🌐 IP 坐标: \`$A_IP\`\n🕒 最后通讯: \`$LAST_SEEN\`\n\n✅ **执行成功**: 模块 [$MOD_NAME] 状态已切换为 $TARGET_STATE！"
-                            edit_ui "$CHAT_ID" "$callback_message_id" "$TEXT_MSG" "$BTNS"
+                            render_ui "$CHAT_ID" "$callback_message_id" "$TEXT_MSG" "$BTNS"
                         elif [[ "$RESPONSE" == *"401"* ]]; then
                             send_msg "$CHAT_ID" "🚨 **鉴权失败**：中枢与节点的通信凭证 (Token) 不匹配，指令已被节点强行熔断！%0A%0A💡 *请在节点重新运行安装脚本，将生成的最新 \`#REGISTER#\` 注册指令发送给 Bot 进行同步！*"
                         else
@@ -684,7 +705,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     WARNING_MSG="☢️ **【高危操作：销毁节点档案】**\n\n您即将从司令部彻底抹除节点 \`$TARGET_ALIAS\` 的追踪数据。\n\n⚠️ **风险提示**：\n1. 中枢数据库将永久丢失该节点的存活记录与 IP 污染体检趋势历史。\n2. 若边缘节点的 Agent 进程仍在运行，其下一次发送探测报告时将因未注册被中枢抛弃。\n\n**是否确定执行销毁动作？**"
                     
                     if [ -n "$callback_message_id" ]; then
-                        edit_ui "$CHAT_ID" "$callback_message_id" "$WARNING_MSG" "$CONFIRM_BTNS"
+                        render_ui "$CHAT_ID" "$callback_message_id" "$WARNING_MSG" "$CONFIRM_BTNS"
                     else
                         send_ui "$CHAT_ID" "$WARNING_MSG" "$CONFIRM_BTNS"
                     fi
@@ -929,7 +950,7 @@ BTN_DANGER="[{\"text\":\"🗑️ 从中枢销毁该档案\",\"callback_data\":\"
                     BTNS="[[{\"text\":\"⚙️ 调出该节点控制台\",\"callback_data\":\"manage:$TARGET_NODE\"}]]"
                     
                     if [ -n "$callback_message_id" ]; then
-                        edit_ui "$CHAT_ID" "$callback_message_id" "$TEXT_RES" "$BTNS"
+                        render_ui "$CHAT_ID" "$callback_message_id" "$TEXT_RES" "$BTNS"
                     else
                         send_ui "$CHAT_ID" "$TEXT_RES" "$BTNS"
                     fi

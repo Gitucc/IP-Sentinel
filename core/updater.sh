@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 INSTALL_DIR=${INSTALL_DIR:-/opt/ip_sentinel}
 CONFIG_FILE=${CONFIG_FILE:-${INSTALL_DIR}/config.conf}
 UA_TIME_FILE=${UA_TIME_FILE:-${INSTALL_DIR}/core/.ua_last_update}
@@ -13,6 +12,27 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 source "$CONFIG_FILE"
 
+if [ "${1:-}" = "--scheduled" ]; then
+    STATE_DIR="${INSTALL_DIR}/data/.update_state"
+    mkdir -p "$STATE_DIR" || exit 1
+    # 安装后的首次检查可能与定时任务重叠，锁要覆盖下载和成功标记写入。
+    exec 9>"${STATE_DIR}/lock"
+    flock -n 9 || exit 0
+
+    # Cron 使用宿主时区；在这里判断 UTC，避免不同节点在仓库发布前更新。
+    TODAY=$(date -u +%F)
+    [ "$(date -u +%H)" -ge 10 ] || exit 0
+    [ "$(cat "${STATE_DIR}/success" 2>/dev/null)" != "$TODAY" ] || exit 0
+    NOW=$(date -u +%s)
+    LAST_ATTEMPT=$(cat "${STATE_DIR}/attempt" 2>/dev/null)
+    # 比较小时而非相隔秒数，避免调度抖动让下一次重试多等一小时。
+    if [[ "$LAST_ATTEMPT" =~ ^[0-9]+$ ]] &&
+       [ "$((NOW / 3600))" -eq "$((LAST_ATTEMPT / 3600))" ]; then
+        exit 0
+    fi
+    printf '%s\n' "$NOW" > "${STATE_DIR}/attempt" || exit 1
+fi
+
 UPDATE_TMP=$(mktemp -d /tmp/ip_sentinel_update.XXXXXX) || exit 1
 trap 'rm -rf "$UPDATE_TMP"' EXIT HUP INT QUIT TERM
 
@@ -22,12 +42,12 @@ log() {
     mkdir -p "${INSTALL_DIR}/logs"
 
     local core_msg=$(printf "[v%-5s] [%-5s] [%-7s] [%s] %s" "$local_ver" "$2" "$1" "$REGION_CODE" "$3")
-    # 使用 UTC 时间以统一时间基准
+    # 节点分布在不同时区，日志统一用 UTC 便于按时间排查。
     echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $core_msg" >> "$LOG_FILE"
     echo "$core_msg"
 }
 
-log "Updater" "INFO " "========== 触发后台静默 OTA 热数据更新 =========="
+log "Updater" "INFO " "开始同步热数据"
 
 if [[ "${IP_PREF:-4}" != "4" && "${IP_PREF:-4}" != "6" ]]; then
     IP_PREF="4"
@@ -49,6 +69,17 @@ download_file() {
 
     "$CURL_BIN" "${CURL_ARGS[@]}" "$source_url" -o "$destination_file"
 }
+
+if [ "${1:-}" = "--scheduled" ]; then
+    # Actions 可能延迟，过了约定时刻也不能把昨天的数据记作今天同步成功。
+    if ! download_file "${REPO_RAW_URL}/data/keywords/updated_at" "${UPDATE_TMP}/updated_at" ||
+       [ "$(cat "${UPDATE_TMP}/updated_at" 2>/dev/null)" != "$TODAY" ]; then
+        log "Updater" "WARN " "仓库尚未发布 ${TODAY} 的数据，或发布日期读取失败，稍后重试"
+        exit 1
+    fi
+fi
+
+UPDATE_FAILED=0
 
 is_valid_keyword_file() {
     local keyword_file="$1"
@@ -108,11 +139,13 @@ fi
 
 TMP_KW="${UPDATE_TMP}/keywords.txt"
 
-if download_file "${REPO_RAW_URL}/data/keywords/kw_${REGION_CODE}.txt" "$TMP_KW" && is_valid_keyword_file "$TMP_KW"; then
-    mv "$TMP_KW" "${INSTALL_DIR}/data/keywords/kw_${REGION_CODE}.txt"
+if download_file "${REPO_RAW_URL}/data/keywords/kw_${REGION_CODE}.txt" "$TMP_KW" &&
+   is_valid_keyword_file "$TMP_KW" &&
+   mv "$TMP_KW" "${INSTALL_DIR}/data/keywords/kw_${REGION_CODE}.txt"; then
     log "Updater" "INFO " "✅ 区域搜索词库 (kw_${REGION_CODE}) 每日同步成功"
 else
     log "Updater" "WARN " "❌ 搜索词库拉取失败，保留本地旧数据防崩溃"
+    UPDATE_FAILED=1
     rm -f "$TMP_KW"
 fi
 
@@ -122,11 +155,12 @@ if [ -n "$REGION_JSON_FILE" ] && [ -f "$REGION_JSON_FILE" ]; then
     REL_PATH=${REGION_JSON_FILE#*${INSTALL_DIR}/}
     TMP_JSON="${UPDATE_TMP}/region.json"
 
-    if download_file "${REPO_RAW_URL}/${REL_PATH}" "$TMP_JSON" && is_valid_region_file "$TMP_JSON"; then
-        mv "$TMP_JSON" "$REGION_JSON_FILE"
+    if download_file "${REPO_RAW_URL}/${REL_PATH}" "$TMP_JSON" &&
+       is_valid_region_file "$TMP_JSON" && mv "$TMP_JSON" "$REGION_JSON_FILE"; then
         log "Updater" "INFO " "✅ 核心战区规则库 ($REL_PATH) 每日同步成功"
     else
         log "Updater" "WARN " "❌ 战区规则库拉取失败，保留本地旧数据"
+        UPDATE_FAILED=1
         rm -f "$TMP_JSON"
     fi
 fi
@@ -150,4 +184,8 @@ if [ -f "$LOG_FILE" ]; then
     log "Updater" "INFO " "🧹 系统日志已完成定期清理瘦身 (保留最新 2000 行)"
 fi
 
-log "Updater" "INFO " "========== OTA 养料注入与系统维护结束 =========="
+log "Updater" "INFO " "热数据同步与日志维护结束"
+if [ "${1:-}" = "--scheduled" ] && [ "$UPDATE_FAILED" -eq 0 ]; then
+    printf '%s\n' "$TODAY" > "${STATE_DIR}/success" || exit 1
+fi
+exit "$UPDATE_FAILED"

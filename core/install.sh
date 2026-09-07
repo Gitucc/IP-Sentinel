@@ -200,7 +200,7 @@ do_resend_registration() {
 }
 
 echo -e "\n[1/7] 正在探测并安装基础环境依赖 (curl, jq, cron, procps, python3)..."
-REQUIRED_CMDS=("curl" "jq" "crontab" "pgrep" "python3" "openssl")
+REQUIRED_CMDS=("curl" "jq" "crontab" "pgrep" "python3" "openssl" "flock")
 MISSING_CMDS=()
 
 for cmd in "${REQUIRED_CMDS[@]}"; do
@@ -214,7 +214,7 @@ if [ ${#MISSING_CMDS[@]} -gt 0 ]; then
     
     if command -v apt-get >/dev/null 2>&1; then
         apt-get update -y >/dev/null 2>&1
-        apt-get install -y --no-install-recommends curl jq cron procps python3 openssl >/dev/null 2>&1
+        apt-get install -y --no-install-recommends curl jq cron procps python3 openssl util-linux >/dev/null 2>&1
         systemctl enable cron >/dev/null 2>&1 && systemctl start cron >/dev/null 2>&1
         
     elif command -v yum >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1 || command -v microdnf >/dev/null 2>&1; then
@@ -231,28 +231,28 @@ if [ ${#MISSING_CMDS[@]} -gt 0 ]; then
         $PKG_MGR install -y epel-release >/dev/null 2>&1 || true
         
         echo -e "\033[90m   (正在拉取核心组件...)\033[0m"
-        $PKG_MGR install -y $OPT_ARGS curl jq cronie procps-ng python3 openssl
+        $PKG_MGR install -y $OPT_ARGS curl jq cronie procps-ng python3 openssl util-linux
         systemctl enable crond >/dev/null 2>&1 && systemctl start crond >/dev/null 2>&1
         
     elif command -v apk >/dev/null 2>&1; then
         echo "Alpine 探测到系统类型为 Alpine Linux，正在执行轻量级安装..."
-        apk add --no-cache curl jq cronie procps python3 bash openssl || apk add --no-cache curl jq procps python3 bash openssl
+        apk add --no-cache curl jq cronie procps python3 bash openssl util-linux || apk add --no-cache curl jq procps python3 bash openssl util-linux
         mkdir -p /var/spool/cron/crontabs
         rc-update add crond default >/dev/null 2>&1
         service crond start >/dev/null 2>&1
         
     elif command -v pacman >/dev/null 2>&1; then
-        pacman -S --needed --noconfirm curl jq cronie procps-ng python openssl >/dev/null 2>&1
+        pacman -S --needed --noconfirm curl jq cronie procps-ng python openssl util-linux >/dev/null 2>&1
         mkdir -p /root/.cache/crontab 2>/dev/null
         systemctl enable cronie >/dev/null 2>&1 && systemctl start cronie >/dev/null 2>&1
         
     else
         echo -e "\033[31m❌ 自动安装失败：系统未知的包管理器。\033[0m"
         echo -e "\033[33m⚠️ 请根据您的操作系统，手动执行以下安装命令后重新运行本脚本：\033[0m"
-        echo -e "  Debian/Ubuntu: \033[36mapt-get update && apt-get install -y --no-install-recommends curl jq cron procps python3 openssl\033[0m"
-        echo -e "  CentOS/RHEL:   \033[36myum install -y curl jq cronie procps-ng python3 openssl\033[0m"
-        echo -e "  Alpine Linux:  \033[36mapk add --no-cache curl jq cronie procps python3 bash openssl\033[0m"
-        echo -e "  Arch Linux:    \033[36mpacman -Syu --needed curl jq cronie procps-ng python openssl\033[0m"
+        echo -e "  Debian/Ubuntu: \033[36mapt-get update && apt-get install -y --no-install-recommends curl jq cron procps python3 openssl util-linux\033[0m"
+        echo -e "  CentOS/RHEL:   \033[36myum install -y curl jq cronie procps-ng python3 openssl util-linux\033[0m"
+        echo -e "  Alpine Linux:  \033[36mapk add --no-cache curl jq cronie procps python3 bash openssl util-linux\033[0m"
+        echo -e "  Arch Linux:    \033[36mpacman -Syu --needed curl jq cronie procps-ng python openssl util-linux\033[0m"
         exit 1
     fi
     
@@ -337,7 +337,6 @@ done
 rm -f /etc/local.d/ip_sentinel.start 2>/dev/null
 
 if [ "$UPGRADE_MODE" == "true" ]; then
-    # 平滑升级时销毁旧 TLS 证书与 IP 缓存以防证书不兼容或旧数据残留
     rm -f "${INSTALL_DIR}/core/cert.pem" "${INSTALL_DIR}/core/key.pem" "${INSTALL_DIR}/core/.last_ip" 2>/dev/null
     echo -e "🧹 历史底层缓存及残旧 TLS 证书已强制销毁，准备重铸安全装甲。"
 
@@ -509,7 +508,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
     RAW_DETECT_V4=$( (curl -4 -s -m 3 api.ip.sb/ip || curl -4 -s -m 3 ifconfig.me || curl -4 -s -m 3 ipv4.icanhazip.com) 2>/dev/null | grep -E "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | head -n 1 | tr -d '[:space:]')
     RAW_DETECT_V6=$( (curl -6 -s -m 3 api.ip.sb/ip || curl -6 -s -m 3 ifconfig.me || curl -6 -s -m 3 ipv6.icanhazip.com) 2>/dev/null | grep -E "^[0-9a-fA-F:]+.*:" | head -n 1 | tr -d '[:space:]')
 
-    # 过滤虚拟网卡与常见代理/隧道等非真实公网环境
+    # 只保留可作为公网通信出口的地址，避免把虚拟网卡、代理或隧道地址选进候选池
     DETECT_V4=""
     if [[ -n "$RAW_DETECT_V4" ]]; then
         V4_DEV=$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -n 1)
@@ -572,7 +571,7 @@ if [ "$UPGRADE_MODE" == "false" ]; then
         fi
     fi
 
-    # 为 IPv6 地址添加方括号以适配下游组件解析
+    # IPv6 地址必须加方括号，供下游组件正确解析
     if [[ "$PUBLIC_IP" == *":"* ]] && [[ "$PUBLIC_IP" != *"["* ]]; then
         SAFE_PUBLIC_IP="[${PUBLIC_IP}]"
     else
@@ -650,7 +649,6 @@ if [ "$UPGRADE_MODE" == "false" ]; then
     AGENT_TOKEN=$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')
 
     cat > "$CONFIG_FILE" << EOF
-# IP-Sentinel Configuration
 AGENT_VERSION="$TARGET_VERSION"
 REGION_CODE="$REGION_CODE"
 REGION_NAME="$REGION_NAME"
@@ -802,8 +800,9 @@ curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_google.sh" -
 curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_trust.sh" -o "${TMP_CORE}/mod_trust.sh"
 curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_quality.sh" -o "${TMP_CORE}/mod_quality.sh"
 
-# 检查拉取的核心文件完整性，防止因网络原因导致节点不可用
-if [ ! -s "${TMP_CORE}/runner.sh" ] || [ ! -s "${TMP_CORE}/agent_daemon.sh" ]; then
+# 拉取结果为空或调度脚本语法检查失败时停止覆盖，避免网络异常留下不可运行的核心文件
+if [ ! -s "${TMP_CORE}/runner.sh" ] || [ ! -s "${TMP_CORE}/agent_daemon.sh" ] ||
+   [ ! -s "${TMP_CORE}/updater.sh" ] || ! bash -n "${TMP_CORE}/updater.sh"; then
     echo -e "\033[31m❌ 致命错误：核心代码拉取失败！网络阻断或 GitHub Raw 异常。\033[0m"
     echo "🛡️ 防砖升级熔断：已终止覆盖，旧版哨兵引擎仍安全存活中。"
     rm -rf "$TMP_CORE"
@@ -834,9 +833,6 @@ else
 fi
 
 echo -e "\n[7/7] 正在注入系统守护进程与调度器..."
-
-DEPLOY_UTC_HOUR=$(date -u +%H)
-DEPLOY_UTC_MIN=$(date -u +%M)
 
 echo $(date -u +%s) > "${INSTALL_DIR}/core/.ua_last_update"
 
@@ -877,7 +873,7 @@ After=network.target
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 SyslogIdentifier=ip-sentinel
 Type=oneshot
-ExecStart=/bin/bash ${INSTALL_DIR}/core/updater.sh
+ExecStart=/bin/bash ${INSTALL_DIR}/core/updater.sh --scheduled
 User=root
 CPUSchedulingPolicy=idle
 IOSchedulingClass=idle
@@ -887,7 +883,7 @@ EOF
 [Unit]
 Description=Timer for IP-Sentinel Updater Service
 [Timer]
-OnCalendar=*-*-* ${DEPLOY_UTC_HOUR}:${DEPLOY_UTC_MIN}:00 UTC
+OnCalendar=*-*-* 10..23:00:00 UTC
 Persistent=true
 Unit=ip-sentinel-updater.service
 [Install]
@@ -976,9 +972,7 @@ while true; do
     if [ "\$MIN" == "00" ] || [ "\$MIN" == "20" ] || [ "\$MIN" == "40" ]; then
         /bin/bash /opt/ip_sentinel/core/runner.sh >/dev/null 2>&1
     fi
-    if [ "\$HOUR" == "${DEPLOY_UTC_HOUR}" ] && [ "\$MIN" == "${DEPLOY_UTC_MIN}" ]; then
-        /bin/bash /opt/ip_sentinel/core/updater.sh >/dev/null 2>&1
-    fi
+    /bin/bash /opt/ip_sentinel/core/updater.sh --scheduled >/dev/null 2>&1 &
     if [ "\$HOUR" == "16" ] && [ "\$MIN" == "00" ]; then
         /bin/bash /opt/ip_sentinel/core/tg_report.sh >/dev/null 2>&1
     fi
@@ -1004,7 +998,7 @@ EOF
         else
             crontab -l 2>/dev/null | grep -v "ip_sentinel" > "${SECURE_TMP}/cron_backup" || true
             echo "*/20 * * * * ${INSTALL_DIR}/core/runner.sh >/dev/null 2>&1" >> "${SECURE_TMP}/cron_backup"
-            echo "${DEPLOY_UTC_MIN} ${DEPLOY_UTC_HOUR} * * * ${INSTALL_DIR}/core/updater.sh >/dev/null 2>&1" >> "${SECURE_TMP}/cron_backup"
+            echo "0 * * * * /bin/bash ${INSTALL_DIR}/core/updater.sh --scheduled >/dev/null 2>&1" >> "${SECURE_TMP}/cron_backup"
             
             if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
                 echo "0 16 * * * ${INSTALL_DIR}/core/tg_report.sh >/dev/null 2>&1" >> "${SECURE_TMP}/cron_backup"
@@ -1043,7 +1037,10 @@ EOF
         fi
     fi
 
-# 提前固化注册报文，确保即使节点端不配置 TG_TOKEN，也能在终端打印出最新的同步报文以供中枢登记
+echo "热词同步：每天 10:00 UTC 后检查当天数据，失败后每小时重试。"
+nohup /bin/bash "${INSTALL_DIR}/core/updater.sh" --scheduled >/dev/null 2>&1 &
+
+# 先准备最新注册报文；即使节点未配置 TG_TOKEN，终端也能输出它供中枢登记
 REG_MSG="#REGISTER#|${REGION_CODE}|${NODE_NAME}|${SAFE_COMM_IP}|${AGENT_PORT}|${NODE_ALIAS}|${ENABLE_OTA}|${AGENT_TOKEN}"
 
 if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then

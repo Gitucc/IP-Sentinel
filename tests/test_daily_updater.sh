@@ -65,6 +65,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$source_url" in
+    */data/keywords/updated_at)
+        [ "${FAKE_MISSING_PUBLICATION:-false}" != true ] || exit 22
+        printf '%s\n' "${FAKE_PUBLICATION_DATE:-2026-09-05}" > "$destination_file"
+        ;;
     */data/keywords/kw_US.txt)
         if [ "${FAKE_BAD_KEYWORDS:-false}" == "true" ]; then
             printf '<html>error</html>\n' > "$destination_file"
@@ -73,6 +77,7 @@ case "$source_url" in
         fi
         ;;
     */data/regions/US/CA/Test.json)
+        [ "${FAKE_REGION_FAILURE:-false}" != true ] || exit 22
         cp "$REGION_FIXTURE" "$destination_file"
         ;;
     *xykt/IPQuality*)
@@ -110,13 +115,16 @@ grep -q 'xykt/IPQuality' "${INSTALL_ROOT}/core/ip_probe.sh" || {
 }
 
 cp "${TEST_DIR}/keywords.txt" "${INSTALL_ROOT}/data/keywords/kw_US.txt"
-FAKE_BAD_KEYWORDS="true" \
+if FAKE_BAD_KEYWORDS="true" \
 INSTALL_DIR="$INSTALL_ROOT" \
 CONFIG_FILE="${INSTALL_ROOT}/config.conf" \
 UA_TIME_FILE="${INSTALL_ROOT}/core/.ua_last_update" \
 REPO_RAW_URL="https://example.invalid/repository" \
 CURL_BIN="${TEST_DIR}/fake-curl" \
-bash "${REPO_ROOT}/core/updater.sh" >/dev/null
+bash "${REPO_ROOT}/core/updater.sh" >/dev/null; then
+    echo "FAIL: invalid keywords were reported as success" >&2
+    exit 1
+fi
 
 cmp -s "${INSTALL_ROOT}/data/keywords/kw_US.txt" "${TEST_DIR}/keywords.txt" || {
     echo "FAIL: invalid keyword response replaced the local file" >&2
@@ -124,3 +132,41 @@ cmp -s "${INSTALL_ROOT}/data/keywords/kw_US.txt" "${TEST_DIR}/keywords.txt" || {
 }
 
 echo "PASS: daily updater"
+
+run_scheduled() (
+    # 每个案例独立检查下载结果，不让上一次尝试的小时限制遮住断言。
+    rm -f "${INSTALL_ROOT}/data/.update_state/attempt" "${INSTALL_ROOT}/data/.update_state/success"
+    date() {
+        case "$*" in
+            '-u +%F') echo 2026-09-05 ;;
+            '-u +%H') echo 10 ;;
+            *) command date "$@" ;;
+        esac
+    }
+    flock() { return 0; }
+    export -f date flock
+    INSTALL_DIR="$INSTALL_ROOT" CONFIG_FILE="${INSTALL_ROOT}/config.conf" \
+    UA_TIME_FILE="${INSTALL_ROOT}/core/.ua_last_update" \
+    REPO_RAW_URL="https://example.invalid/repository" CURL_BIN="${TEST_DIR}/fake-curl" \
+    bash "${REPO_ROOT}/core/updater.sh" --scheduled >/dev/null
+)
+printf 'keep old keywords\n' > "${INSTALL_ROOT}/data/keywords/kw_US.txt"
+if FAKE_PUBLICATION_DATE=2026-09-04 run_scheduled; then
+    echo 'FAIL: stale publication accepted'; exit 1
+fi
+grep -qx 'keep old keywords' "${INSTALL_ROOT}/data/keywords/kw_US.txt"
+if FAKE_PUBLICATION_DATE=invalid run_scheduled; then
+    echo 'FAIL: invalid publication accepted'; exit 1
+fi
+if FAKE_MISSING_PUBLICATION=true run_scheduled; then
+    echo 'FAIL: missing publication accepted'; exit 1
+fi
+grep -qx 'keep old keywords' "${INSTALL_ROOT}/data/keywords/kw_US.txt"
+printf '{"region_name":"Keep this region"}\n' > "${INSTALL_ROOT}/data/regions/US/CA/Test.json"
+if FAKE_REGION_FAILURE=true run_scheduled; then
+    echo 'FAIL: region download failure was hidden'; exit 1
+fi
+grep -q 'Keep this region' "${INSTALL_ROOT}/data/regions/US/CA/Test.json"
+run_scheduled
+cmp -s "${INSTALL_ROOT}/data/keywords/kw_US.txt" "$KEYWORD_FIXTURE"
+echo 'PASS: publication date gate and recovery'

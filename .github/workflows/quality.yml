@@ -23,11 +23,20 @@ jobs:
       - name: Test Master security policy
         run: bash tests/test_master_security.sh
 
+      - name: Test Master panels
+        run: bash tests/test_master_ui.sh
+
       - name: Test registration resend
         run: bash tests/test_resend_registration.sh
 
       - name: Test daily updater
         run: bash tests/test_daily_updater.sh
+
+      - name: Test UTC update schedule
+        run: bash tests/test_update_schedule.sh
+
+      - name: Test installer schedules
+        run: bash tests/test_install_schedule.sh
 
       - name: Test data contracts
         run: python tests/test_data_contracts.py

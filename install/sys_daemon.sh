@@ -17,7 +17,6 @@ do_clean_env() {
     rm -f /etc/local.d/ip_sentinel.start 2>/dev/null
 
     if [ "$UPGRADE_MODE" == "true" ]; then
-        # 平滑升级时强制销毁旧版 TLS 证书与旧版 IP 缓存
         rm -f "${INSTALL_DIR}/core/cert.pem" "${INSTALL_DIR}/core/key.pem" "${INSTALL_DIR}/core/.last_ip" 2>/dev/null
         echo -e "🧹 历史底层缓存及残旧 TLS 证书已强制销毁，准备重铸安全装甲。"
 
@@ -51,8 +50,9 @@ do_deploy_core() {
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_trust.sh" -o "${TMP_CORE}/mod_trust.sh"
     curl -fsSL --connect-timeout 10 --retry 3 "${REPO_RAW_URL}/core/mod_quality.sh" -o "${TMP_CORE}/mod_quality.sh"
 
-    # 检查拉取的核心文件完整性，防止因网络原因导致节点不可用
-    if [ ! -s "${TMP_CORE}/runner.sh" ] || [ ! -s "${TMP_CORE}/agent_daemon.sh" ]; then
+    # 拉取结果为空或调度脚本语法检查失败时停止覆盖，避免网络异常留下不可运行的核心文件
+    if [ ! -s "${TMP_CORE}/runner.sh" ] || [ ! -s "${TMP_CORE}/agent_daemon.sh" ] ||
+       [ ! -s "${TMP_CORE}/updater.sh" ] || ! bash -n "${TMP_CORE}/updater.sh"; then
         echo -e "\033[31m❌ 致命错误：核心代码拉取失败！网络阻断或 GitHub Raw 异常。\033[0m"
         echo "🛡️ 防砖机制触发：已中止覆盖，旧版哨兵引擎仍安全存活中。"
         rm -rf "$TMP_CORE"
@@ -85,9 +85,6 @@ do_deploy_core() {
 
 do_inject_daemon() {
     echo -e "\n[7/7] 正在注入系统守护进程与调度器..."
-
-    DEPLOY_UTC_HOUR=$(date -u +%H)
-    DEPLOY_UTC_MIN=$(date -u +%M)
 
     echo $(date -u +%s) > "${INSTALL_DIR}/core/.ua_last_update"
 
@@ -128,7 +125,7 @@ After=network.target
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 SyslogIdentifier=ip-sentinel
 Type=oneshot
-ExecStart=/bin/bash ${INSTALL_DIR}/core/updater.sh
+ExecStart=/bin/bash ${INSTALL_DIR}/core/updater.sh --scheduled
 User=root
 CPUSchedulingPolicy=idle
 IOSchedulingClass=idle
@@ -138,7 +135,7 @@ EOF
 [Unit]
 Description=Timer for IP-Sentinel Updater Service
 [Timer]
-OnCalendar=*-*-* ${DEPLOY_UTC_HOUR}:${DEPLOY_UTC_MIN}:00 UTC
+OnCalendar=*-*-* 10..23:00:00 UTC
 Persistent=true
 Unit=ip-sentinel-updater.service
 [Install]
@@ -227,9 +224,7 @@ while true; do
     if [ "\$MIN" == "00" ] || [ "\$MIN" == "20" ] || [ "\$MIN" == "40" ]; then
         /bin/bash /opt/ip_sentinel/core/runner.sh >/dev/null 2>&1
     fi
-    if [ "\$HOUR" == "${DEPLOY_UTC_HOUR}" ] && [ "\$MIN" == "${DEPLOY_UTC_MIN}" ]; then
-        /bin/bash /opt/ip_sentinel/core/updater.sh >/dev/null 2>&1
-    fi
+    /bin/bash /opt/ip_sentinel/core/updater.sh --scheduled >/dev/null 2>&1 &
     if [ "\$HOUR" == "16" ] && [ "\$MIN" == "00" ]; then
         /bin/bash /opt/ip_sentinel/core/tg_report.sh >/dev/null 2>&1
     fi
@@ -255,7 +250,7 @@ EOF
         else
             crontab -l 2>/dev/null | grep -v "ip_sentinel" > "${SECURE_TMP}/cron_backup" || true
             echo "*/20 * * * * ${INSTALL_DIR}/core/runner.sh >/dev/null 2>&1" >> "${SECURE_TMP}/cron_backup"
-            echo "${DEPLOY_UTC_MIN} ${DEPLOY_UTC_HOUR} * * * ${INSTALL_DIR}/core/updater.sh >/dev/null 2>&1" >> "${SECURE_TMP}/cron_backup"
+            echo "0 * * * * /bin/bash ${INSTALL_DIR}/core/updater.sh --scheduled >/dev/null 2>&1" >> "${SECURE_TMP}/cron_backup"
             
             if [[ -n "$TG_TOKEN" ]] && [[ -n "$CHAT_ID" ]]; then
                 echo "0 16 * * * ${INSTALL_DIR}/core/tg_report.sh >/dev/null 2>&1" >> "${SECURE_TMP}/cron_backup"
@@ -293,4 +288,6 @@ EOF
             rm -f "${SECURE_TMP}/cron_backup"
         fi
     fi
+    echo "热词同步：每天 10:00 UTC 后检查当天数据，失败后每小时重试。"
+    nohup /bin/bash "${INSTALL_DIR}/core/updater.sh" --scheduled >/dev/null 2>&1 &
 }

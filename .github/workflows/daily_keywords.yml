@@ -26,6 +26,9 @@ jobs:
       - name: Execute Trust URL Engine
         run: python scripts/fetch_trust_urls.py
 
+      - name: Record data publication date
+        run: date -u +%F > data/keywords/updated_at
+
       - name: Commit and Push All Data
         run: |
           git config --global user.name "github-actions[bot]"

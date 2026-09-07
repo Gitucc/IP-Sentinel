@@ -49,7 +49,6 @@ pkill -9 -f "mod_trust.sh" >/dev/null 2>&1
 pkill -9 -f "sentinel_scheduler.sh" >/dev/null 2>&1
 
 echo "正在清理系统定时任务 (Cron)..."
-# 避免写入临时文件以提升安全性
 crontab -l 2>/dev/null | grep -v "ip_sentinel" | crontab - >/dev/null 2>&1 || true
 
 for CRON_FILE in "/var/spool/cron/crontabs/root" "/etc/crontabs/root"; do
@@ -80,7 +79,7 @@ if [ -f "$CONFIG_FILE" ]; then
         else
             local fw_removed=false
             if command -v iptables >/dev/null 2>&1; then
-                # iptables 仅删除单条匹配规则，使用循环清理可能存在的重复规则
+                # iptables 每次只删一条匹配规则，循环才能清掉重复规则
                 while iptables -C INPUT -p tcp --dport "$AGENT_PORT" -j ACCEPT >/dev/null 2>&1; do
                     iptables -D INPUT -p tcp --dport "$AGENT_PORT" -j ACCEPT
                     fw_removed=true
